@@ -1,0 +1,52 @@
+name: Deploy static TypeCard to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build static config
+        run: |
+          cp -R static-site dist
+          cat > dist/config.js <<'EOF'
+          window.TYPECARD_CONFIG = {
+            SUPABASE_URL: "${{ secrets.SUPABASE_URL }}",
+            SUPABASE_PUBLISHABLE_KEY: "${{ secrets.SUPABASE_PUBLISHABLE_KEY }}",
+            GITHUB_PAGES_BASE_PATH: "${{ vars.PAGES_BASE_PATH }}",
+            DEFAULT_CARD_ID: "table-a01",
+            DEMO_LOGIN_EMAIL: "${{ vars.DEMO_LOGIN_EMAIL }}",
+            DEMO_LOGIN_PASSWORD: "${{ secrets.DEMO_LOGIN_PASSWORD }}"
+          };
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
