@@ -120,6 +120,10 @@ begin
     '{
       "rednote": "新加坡二手手机/配件店探店｜{{merchantName}}\n\n今天到 {{storeName}} 看了一下，店里可以做二手手机回收、售卖和电子零部件咨询。想换手机、卖旧机或者找配件的朋友可以来问问。\n\n#新加坡二手手机 #手机回收 #电子配件 #探店 #{{merchantName}}",
       "tiktok": "{{merchantName}} 探店分享：二手手机回收、售卖和电子配件咨询都可以到店问问。#Singapore #PhoneTradeIn #SecondHandPhone",
+      "google": "请在 Google Maps 写下真实体验。发布后回到本页生成福利码，到柜台领取礼品。",
+      "facebook": "关注 {{merchantName}} 的 Facebook 页面，回到本页生成福利码。",
+      "instagram": "关注 {{merchantName}} 的 Instagram 页面，回到本页生成福利码。",
+      "whatsapp": "通过 WhatsApp 联系 {{merchantName}} 咨询回收估价、二手机和配件。",
       "default": "今天在 {{merchantName}} 发现了不错的手机回收、二手手机和配件服务，推荐来店里看看。"
     }'::jsonb
   )

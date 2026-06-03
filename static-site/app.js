@@ -1,7 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   buildAppUrl,
+  buildNfcInstruction,
   buildTrialMessage,
+  editablePlatformSettings,
   renderTemplate,
   routeFromHash,
 } from "./core.mjs";
@@ -337,12 +339,22 @@ async function requireOwnerBundle() {
         .eq("merchant_id", merchant.id)
         .order("created_at", { ascending: false }),
     ]);
+  const card = cards?.[0];
+  const { data: links, error: linksError } = card
+    ? await supabase
+        .from("action_links")
+        .select("*")
+        .eq("card_id", card.id)
+        .order("sort_order", { ascending: true })
+    : { data: [], error: null };
+  if (linksError) throw linksError;
 
   return {
     user: auth.user,
     merchant,
     store: stores?.[0],
     cards: cards ?? [],
+    links: links ?? [],
     reward: rewards?.[0],
     claims: claims ?? [],
   };
@@ -432,6 +444,7 @@ function renderClaimsTable(claims) {
 async function renderSettings() {
   const bundle = await requireOwnerBundle();
   const reward = bundle.reward;
+  const linksById = Object.fromEntries(bundle.links.map((link) => [link.id, link]));
   app.innerHTML = `
     <main class="shell">
       <section class="wrap panel">
@@ -446,8 +459,21 @@ async function renderSettings() {
           <label class="field">店铺简介 <input class="input" name="tagline" value="${escapeAttr(bundle.merchant.tagline)}" required /></label>
           <label class="field">福利标题 <input class="input" name="rewardTitle" value="${escapeAttr(reward?.title || "")}" required /></label>
           <label class="field">领取说明 <textarea class="textarea" name="rewardDescription">${escapeHtml(reward?.description || "")}</textarea></label>
-          <label class="field">小红书文案 <textarea class="textarea" name="rednote">${escapeHtml(reward?.publish_templates?.rednote || "")}</textarea></label>
-          <label class="field">TikTok 文案 <textarea class="textarea" name="tiktok">${escapeHtml(reward?.publish_templates?.tiktok || "")}</textarea></label>
+          <section class="settings-section">
+            <h2>平台入口</h2>
+            <p class="muted">这里控制顾客页出现哪些平台，以及每个平台点开后去哪里。</p>
+            ${editablePlatformSettings
+              .map((platform) => renderPlatformLinkSetting(platform, linksById[platform.id]))
+              .join("")}
+          </section>
+          <section class="settings-section">
+            <h2>平台文案</h2>
+            <p class="muted">发布类平台会自动生成文案；评价/关注类平台可以写给顾客看的提示。</p>
+            ${editablePlatformSettings
+              .map((platform) => renderPlatformTemplateSetting(platform, reward))
+              .join("")}
+            <label class="field">默认文案 <textarea class="textarea" name="template-default">${escapeHtml(reward?.publish_templates?.default || "")}</textarea></label>
+          </section>
           <button class="btn">保存设置</button>
         </form>
       </section>
@@ -457,12 +483,30 @@ async function renderSettings() {
   document.querySelector("#settings-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const publishTemplates = {
-      ...(reward.publish_templates || {}),
-      rednote: String(form.get("rednote")),
-      tiktok: String(form.get("tiktok")),
-    };
-    const [{ error: merchantError }, { error: rewardError }] = await Promise.all([
+    const publishTemplates = editablePlatformSettings.reduce(
+      (templates, platform) => ({
+        ...templates,
+        [platform.id]: String(form.get(`template-${platform.id}`) || ""),
+      }),
+      {
+        ...(reward.publish_templates || {}),
+        default: String(form.get("template-default") || ""),
+      },
+    );
+    const linkUpdates = editablePlatformSettings
+      .filter((platform) => linksById[platform.id])
+      .map((platform) =>
+        supabase
+          .from("action_links")
+          .update({
+            label: String(form.get(`link-${platform.id}-label`) || platform.linkLabel),
+            url: String(form.get(`link-${platform.id}-url`) || linksById[platform.id].url),
+            enabled: form.has(`link-${platform.id}-enabled`),
+          })
+          .eq("card_id", linksById[platform.id].card_id)
+          .eq("id", platform.id),
+      );
+    const [{ error: merchantError }, { error: rewardError }, ...linkResults] = await Promise.all([
       supabase
         .from("merchants")
         .update({
@@ -478,13 +522,40 @@ async function renderSettings() {
           publish_templates: publishTemplates,
         })
         .eq("id", reward.id),
+      ...linkUpdates,
     ]);
-    if (merchantError || rewardError) {
-      alert(merchantError?.message || rewardError?.message);
+    const linkError = linkResults.find((result) => result.error)?.error;
+    if (merchantError || rewardError || linkError) {
+      alert(merchantError?.message || rewardError?.message || linkError?.message);
       return;
     }
     alert("已保存");
   });
+}
+
+function renderPlatformLinkSetting(platform, link) {
+  const enabled = link?.enabled ?? true;
+  return `
+    <div class="platform-setting">
+      <div class="platform-setting-head">
+        <strong>${escapeHtml(platform.name)}</strong>
+        <label class="toggle-field">
+          <input type="checkbox" name="link-${escapeAttr(platform.id)}-enabled" ${enabled ? "checked" : ""} />
+          显示入口
+        </label>
+      </div>
+      <label class="field">按钮标题 <input class="input" name="link-${escapeAttr(platform.id)}-label" value="${escapeAttr(link?.label || platform.linkLabel)}" /></label>
+      <label class="field">平台链接 <input class="input" name="link-${escapeAttr(platform.id)}-url" value="${escapeAttr(link?.url || "")}" placeholder="https://" /></label>
+    </div>
+  `;
+}
+
+function renderPlatformTemplateSetting(platform, reward) {
+  return `
+    <label class="field">${escapeHtml(platform.templateLabel)}
+      <textarea class="textarea" name="template-${escapeAttr(platform.id)}">${escapeHtml(reward?.publish_templates?.[platform.id] || "")}</textarea>
+    </label>
+  `;
 }
 
 async function renderTrialKit() {
@@ -526,6 +597,7 @@ async function renderPrint(cardId) {
   const bundle = await loadCustomerBundle(cardId);
   const url = buildAppUrl(appOrigin, basePath, `/c/${cardId}`);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(url)}`;
+  const nfcInstruction = buildNfcInstruction(url);
 
   app.innerHTML = `
     <main class="shell">
@@ -538,12 +610,30 @@ async function renderPrint(cardId) {
           <button class="btn" onclick="window.print()">打印卡片</button>
         </div>
         <section class="print-card">
-          <p class="muted">Scan N Get Rewards</p>
-          <h1>${escapeHtml(bundle.merchant.name)}</h1>
-          <p>${escapeHtml(bundle.card.location)}</p>
-          <img alt="二维码" src="${escapeAttr(qrUrl)}" width="240" height="240" />
-          <p>${escapeHtml(bundle.store.name)}</p>
-          <p class="muted" style="word-break:break-all">${escapeHtml(url)}</p>
+          <div class="print-card-hero">
+            <p>Scan or Tap</p>
+            <h1>Get Your Reward</h1>
+          </div>
+          <div class="print-entry-grid">
+            <div class="nfc-panel">
+              <div class="nfc-phone">
+                <span></span>
+                <strong>NFC</strong>
+              </div>
+              <p>Tap your phone here</p>
+            </div>
+            <div class="or-divider">or</div>
+            <div class="qr-panel">
+              <img alt="二维码" src="${escapeAttr(qrUrl)}" width="190" height="190" />
+              <p>Scan QR code</p>
+            </div>
+          </div>
+          <div class="print-card-footer">
+            <h2>${escapeHtml(bundle.merchant.name)}</h2>
+            <p>${escapeHtml(bundle.store.name)} · ${escapeHtml(bundle.card.location)}</p>
+            <p class="muted" style="word-break:break-all">${escapeHtml(url)}</p>
+            <p class="nfc-instruction">${escapeHtml(nfcInstruction)}</p>
+          </div>
         </section>
       </section>
     </main>

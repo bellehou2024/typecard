@@ -21,6 +21,49 @@ export function renderTemplate(template, values) {
     .replaceAll("{{platform}}", values.platform ?? "");
 }
 
+export const editablePlatformSettings = [
+  {
+    id: "rednote",
+    name: "小红书",
+    linkLabel: "小红书发布探店笔记",
+    templateLabel: "小红书发布文案",
+  },
+  {
+    id: "tiktok",
+    name: "TikTok",
+    linkLabel: "发布 TikTok 探店视频",
+    templateLabel: "TikTok 发布文案",
+  },
+  {
+    id: "google",
+    name: "Google",
+    linkLabel: "Google 留下真实评价",
+    templateLabel: "Google 提示文案",
+  },
+  {
+    id: "facebook",
+    name: "Facebook",
+    linkLabel: "关注 Facebook",
+    templateLabel: "Facebook 提示文案",
+  },
+  {
+    id: "instagram",
+    name: "Instagram",
+    linkLabel: "关注 Instagram",
+    templateLabel: "Instagram 提示文案",
+  },
+  {
+    id: "whatsapp",
+    name: "WhatsApp",
+    linkLabel: "WhatsApp 咨询报价",
+    templateLabel: "WhatsApp 提示文案",
+  },
+];
+
+export function buildNfcInstruction(customerUrl) {
+  return `NFC 写入链接：${customerUrl}`;
+}
+
 export function buildTrialMessage({
   appOrigin,
   basePath = "",
