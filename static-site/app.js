@@ -6,7 +6,7 @@ import {
   editablePlatformSettings,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs";
+} from "./core.mjs?v=20260604";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
