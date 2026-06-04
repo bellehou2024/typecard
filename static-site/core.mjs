@@ -64,6 +64,15 @@ export function buildNfcInstruction(customerUrl) {
   return `NFC 写入链接：${customerUrl}`;
 }
 
+export function buildShareLaunchUrl(link) {
+  const directPublishUrls = {
+    rednote: "https://creator.xiaohongshu.com/publish/publish?from=typecard&target=article",
+    tiktok: "https://www.tiktok.com/upload?lang=en",
+  };
+
+  return directPublishUrls[link?.id] || link?.url || "#";
+}
+
 export function buildTrialMessage({
   appOrigin,
   basePath = "",

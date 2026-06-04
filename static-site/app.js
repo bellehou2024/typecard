@@ -2,11 +2,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   buildAppUrl,
   buildNfcInstruction,
+  buildShareLaunchUrl,
   buildTrialMessage,
   editablePlatformSettings,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260604";
+} from "./core.mjs?v=20260604-share";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -160,7 +161,7 @@ async function renderCustomer(cardId) {
   `;
 
   document.querySelectorAll("[data-share-id]").forEach((button) => {
-    button.addEventListener("click", () => showShareModal(bundle, button.dataset.shareId));
+    button.addEventListener("click", () => startShareFlow(bundle, button.dataset.shareId));
   });
   document.querySelectorAll("[data-open-id]").forEach((link) => {
     link.addEventListener("click", async () => {
@@ -202,9 +203,28 @@ function renderTaskRow(link) {
   `;
 }
 
-function showShareModal(bundle, linkId) {
+async function startShareFlow(bundle, linkId) {
+  const share = buildShareDraft(bundle, linkId);
+  if (!share) return;
+
+  const copyPromise = copyShareText(share.copy);
+  const popup = window.open(share.launchUrl, "_blank", "noopener,noreferrer");
+  if (!popup) {
+    window.setTimeout(() => {
+      window.location.href = share.launchUrl;
+    }, 150);
+  }
+
+  const copied = await copyPromise;
+  await recordClick(share.card, share.link.id);
+
+  showShareModal(share, { copied, launched: Boolean(popup) });
+}
+
+function buildShareDraft(bundle, linkId) {
   const { card, merchant, store, reward, links } = bundle;
   const link = links.find((candidate) => candidate.id === linkId);
+  if (!link) return null;
   const template =
     reward?.publish_templates?.[link.id] ||
     reward?.publish_templates?.default ||
@@ -215,16 +235,27 @@ function showShareModal(bundle, linkId) {
     storeAddress: store.address,
     platform: link.platform,
   });
+  const launchUrl = buildShareLaunchUrl(link);
 
+  return { card, reward, link, copy, launchUrl };
+}
+
+function showShareModal(share, state = {}) {
+  const { card, reward, link, copy, launchUrl } = share;
   const modal = document.createElement("div");
   modal.className = "modal";
   modal.innerHTML = `
     <div class="modal-card">
-      <h2>${escapeHtml(link.platform)} 发布文案已生成</h2>
+      <h2>${escapeHtml(link.platform)} ${state.copied ? "文案已复制" : "文案已生成"}</h2>
+      <p class="${state.copied ? "status-ok" : "status-warn"}">${
+        state.copied
+          ? "已经复制文案并尝试打开发布入口。发布完成后回到这里领取福利码。"
+          : "当前浏览器没有允许自动复制，请手动复制下面文案，再打开发布页。"
+      }</p>
       <div class="copy-box">${escapeHtml(copy)}</div>
       <div class="grid cols-2" style="margin-top:14px">
-        <button class="btn secondary" data-copy>复制文案</button>
-        <a class="link-btn" data-platform-open href="${escapeAttr(link.url)}" target="_blank" rel="noopener noreferrer">打开平台</a>
+        <button class="btn secondary" data-copy>再复制一次</button>
+        <a class="link-btn" data-platform-open href="${escapeAttr(launchUrl)}" target="_blank" rel="noopener noreferrer">重新打开发布页</a>
       </div>
       <button class="btn" data-claim style="width:100%; margin-top:12px">已发布，生成核销码</button>
       <button class="btn secondary" data-close style="width:100%; margin-top:10px">关闭</button>
@@ -233,7 +264,7 @@ function showShareModal(bundle, linkId) {
   document.body.append(modal);
 
   modal.querySelector("[data-copy]").addEventListener("click", async () => {
-    await navigator.clipboard?.writeText(copy);
+    await copyShareText(copy);
   });
   modal.querySelector("[data-platform-open]").addEventListener("click", async () => {
     await recordClick(card, link.id);
@@ -244,6 +275,15 @@ function showShareModal(bundle, linkId) {
     navigate(`/claim/${claim.id}?code=${encodeURIComponent(claim.code)}`);
   });
   modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
+}
+
+async function copyShareText(copy) {
+  try {
+    await navigator.clipboard?.writeText(copy);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function recordClick(card, linkId) {
