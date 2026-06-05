@@ -73,6 +73,24 @@ export function buildShareLaunchUrl(link) {
   return directPublishUrls[link?.id] || link?.url || "#";
 }
 
+export function buildPendingShareState({ cardId, linkId, createdAt = Date.now() }) {
+  return {
+    cardId,
+    linkId,
+    createdAt,
+  };
+}
+
+export function isPendingShareState(state, cardId) {
+  return Boolean(
+    state &&
+      state.cardId === cardId &&
+      typeof state.linkId === "string" &&
+      state.linkId.length > 0 &&
+      Number.isFinite(state.createdAt),
+  );
+}
+
 export function buildTrialMessage({
   appOrigin,
   basePath = "",

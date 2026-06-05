@@ -2,18 +2,21 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   buildAppUrl,
   buildNfcInstruction,
+  buildPendingShareState,
   buildShareLaunchUrl,
   buildTrialMessage,
   editablePlatformSettings,
+  isPendingShareState,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260604-share";
+} from "./core.mjs?v=20260605-share-resume";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
 const defaultCardId = config.DEFAULT_CARD_ID || "table-a01";
 const basePath = config.GITHUB_PAGES_BASE_PATH || "";
 const appOrigin = window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
+const pendingShareStorageKey = "typecard.pendingShare.v1";
 const supabase =
   config.SUPABASE_URL && config.SUPABASE_PUBLISHABLE_KEY
     ? createClient(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY)
@@ -168,6 +171,7 @@ async function renderCustomer(cardId) {
       await recordClick(card, link.dataset.openId);
     });
   });
+  restorePendingShare(bundle);
 }
 
 function renderTaskCard(link) {
@@ -207,6 +211,7 @@ async function startShareFlow(bundle, linkId) {
   const share = buildShareDraft(bundle, linkId);
   if (!share) return;
 
+  savePendingShare(share.card.id, share.link.id);
   const copyPromise = copyShareText(share.copy);
   const popup = window.open(share.launchUrl, "_blank", "noopener,noreferrer");
   if (!popup) {
@@ -271,10 +276,54 @@ function showShareModal(share, state = {}) {
   });
   modal.querySelector("[data-claim]").addEventListener("click", async () => {
     const claim = await createClaim(card.id, reward.id, link.id);
+    clearPendingShare();
     modal.remove();
     navigate(`/claim/${claim.id}?code=${encodeURIComponent(claim.code)}`);
   });
-  modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
+  modal.querySelector("[data-close]").addEventListener("click", () => {
+    clearPendingShare();
+    modal.remove();
+  });
+}
+
+function savePendingShare(cardId, linkId) {
+  try {
+    window.sessionStorage?.setItem(
+      pendingShareStorageKey,
+      JSON.stringify(buildPendingShareState({ cardId, linkId })),
+    );
+  } catch {
+    // Storage can be unavailable in strict private browsers; the flow still works without resume.
+  }
+}
+
+function readPendingShare() {
+  try {
+    return JSON.parse(window.sessionStorage?.getItem(pendingShareStorageKey) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingShare() {
+  try {
+    window.sessionStorage?.removeItem(pendingShareStorageKey);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function restorePendingShare(bundle) {
+  const pending = readPendingShare();
+  if (!isPendingShareState(pending, bundle.card.id)) return;
+
+  const share = buildShareDraft(bundle, pending.linkId);
+  if (!share) {
+    clearPendingShare();
+    return;
+  }
+
+  showShareModal(share, { copied: true, launched: true });
 }
 
 async function copyShareText(copy) {
