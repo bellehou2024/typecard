@@ -73,6 +73,10 @@ export function buildShareLaunchUrl(link) {
   return directPublishUrls[link?.id] || link?.url || "#";
 }
 
+export function isRewardActionLink(link) {
+  return ["share", "review", "follow"].includes(link?.category);
+}
+
 export function buildPendingShareState({ cardId, linkId, createdAt = Date.now() }) {
   return {
     cardId,

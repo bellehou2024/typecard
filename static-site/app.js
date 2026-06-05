@@ -7,9 +7,10 @@ import {
   buildTrialMessage,
   editablePlatformSettings,
   isPendingShareState,
+  isRewardActionLink,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260605-share-resume";
+} from "./core.mjs?v=20260605-all-actions";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -163,8 +164,8 @@ async function renderCustomer(cardId) {
     </main>
   `;
 
-  document.querySelectorAll("[data-share-id]").forEach((button) => {
-    button.addEventListener("click", () => startShareFlow(bundle, button.dataset.shareId));
+  document.querySelectorAll("[data-action-id]").forEach((button) => {
+    button.addEventListener("click", () => startActionFlow(bundle, button.dataset.actionId));
   });
   document.querySelectorAll("[data-open-id]").forEach((link) => {
     link.addEventListener("click", async () => {
@@ -175,15 +176,15 @@ async function renderCustomer(cardId) {
 }
 
 function renderTaskCard(link) {
-  const isShare = link.category === "share";
+  const canClaimReward = isRewardActionLink(link);
   return `
     <div class="task-card">
       <div class="badge" style="background:${escapeHtml(link.accent)}">${escapeHtml(link.platform.slice(0, 2).toUpperCase())}</div>
-      <p class="muted">${isShare ? "Post to" : taskPrefix(link)}</p>
+      <p class="muted">${link.category === "share" ? "Post to" : taskPrefix(link)}</p>
       <h3>${escapeHtml(link.platform)}</h3>
       ${
-        isShare
-          ? `<button class="btn" data-share-id="${escapeHtml(link.id)}">Post</button>`
+        canClaimReward
+          ? `<button class="btn" data-action-id="${escapeHtml(link.id)}">${taskButtonText(link)}</button>`
           : `<a class="link-btn" data-open-id="${escapeHtml(link.id)}" href="${escapeAttr(link.url)}" target="_blank" rel="noopener noreferrer">${taskButtonText(link)}</a>`
       }
     </div>
@@ -191,7 +192,7 @@ function renderTaskCard(link) {
 }
 
 function renderTaskRow(link) {
-  const isShare = link.category === "share";
+  const canClaimReward = isRewardActionLink(link);
   return `
     <div class="header" style="margin:12px 0">
       <div>
@@ -199,34 +200,34 @@ function renderTaskRow(link) {
         <p class="muted" style="margin:4px 0">${escapeHtml(link.label)}</p>
       </div>
       ${
-        isShare
-          ? `<button class="btn" data-share-id="${escapeHtml(link.id)}">Post</button>`
+        canClaimReward
+          ? `<button class="btn" data-action-id="${escapeHtml(link.id)}">${taskButtonText(link)}</button>`
           : `<a class="link-btn" data-open-id="${escapeHtml(link.id)}" href="${escapeAttr(link.url)}" target="_blank" rel="noopener noreferrer">${taskButtonText(link)}</a>`
       }
     </div>
   `;
 }
 
-async function startShareFlow(bundle, linkId) {
-  const share = buildShareDraft(bundle, linkId);
-  if (!share) return;
+async function startActionFlow(bundle, linkId) {
+  const action = buildActionDraft(bundle, linkId);
+  if (!action) return;
 
-  savePendingShare(share.card.id, share.link.id);
-  const copyPromise = copyShareText(share.copy);
-  const popup = window.open(share.launchUrl, "_blank", "noopener,noreferrer");
+  savePendingShare(action.card.id, action.link.id);
+  const copyPromise = copyShareText(action.copy);
+  const popup = window.open(action.launchUrl, "_blank", "noopener,noreferrer");
   if (!popup) {
     window.setTimeout(() => {
-      window.location.href = share.launchUrl;
+      window.location.href = action.launchUrl;
     }, 150);
   }
 
   const copied = await copyPromise;
-  await recordClick(share.card, share.link.id);
+  await recordClick(action.card, action.link.id);
 
-  showShareModal(share, { copied, launched: Boolean(popup) });
+  showActionModal(action, { copied, launched: Boolean(popup) });
 }
 
-function buildShareDraft(bundle, linkId) {
+function buildActionDraft(bundle, linkId) {
   const { card, merchant, store, reward, links } = bundle;
   const link = links.find((candidate) => candidate.id === linkId);
   if (!link) return null;
@@ -245,24 +246,30 @@ function buildShareDraft(bundle, linkId) {
   return { card, reward, link, copy, launchUrl };
 }
 
-function showShareModal(share, state = {}) {
-  const { card, reward, link, copy, launchUrl } = share;
+function showActionModal(action, state = {}) {
+  const { card, reward, link, copy, launchUrl } = action;
+  const modalTitle =
+    link.category === "share"
+      ? `${link.platform} 文案${state.copied ? "已复制" : "已生成"}`
+      : `${link.platform} 已打开`;
+  const actionHint =
+    link.category === "share"
+      ? state.copied
+        ? "已经复制文案并尝试打开发布入口。发布完成后回到这里领取福利码。"
+        : "当前浏览器没有允许自动复制，请手动复制下面文案，再打开发布页。"
+      : "已经尝试打开对应平台。完成评价、关注或联系后，回到这里领取福利码。";
   const modal = document.createElement("div");
   modal.className = "modal";
   modal.innerHTML = `
     <div class="modal-card">
-      <h2>${escapeHtml(link.platform)} ${state.copied ? "文案已复制" : "文案已生成"}</h2>
-      <p class="${state.copied ? "status-ok" : "status-warn"}">${
-        state.copied
-          ? "已经复制文案并尝试打开发布入口。发布完成后回到这里领取福利码。"
-          : "当前浏览器没有允许自动复制，请手动复制下面文案，再打开发布页。"
-      }</p>
+      <h2>${escapeHtml(modalTitle)}</h2>
+      <p class="${state.copied || link.category !== "share" ? "status-ok" : "status-warn"}">${escapeHtml(actionHint)}</p>
       <div class="copy-box">${escapeHtml(copy)}</div>
       <div class="grid cols-2" style="margin-top:14px">
         <button class="btn secondary" data-copy>再复制一次</button>
-        <a class="link-btn" data-platform-open href="${escapeAttr(launchUrl)}" target="_blank" rel="noopener noreferrer">重新打开发布页</a>
+        <a class="link-btn" data-platform-open href="${escapeAttr(launchUrl)}" target="_blank" rel="noopener noreferrer">重新打开平台</a>
       </div>
-      <button class="btn" data-claim style="width:100%; margin-top:12px">已发布，生成核销码</button>
+      <button class="btn" data-claim style="width:100%; margin-top:12px">已完成，生成核销码</button>
       <button class="btn secondary" data-close style="width:100%; margin-top:10px">关闭</button>
     </div>
   `;
@@ -317,13 +324,13 @@ function restorePendingShare(bundle) {
   const pending = readPendingShare();
   if (!isPendingShareState(pending, bundle.card.id)) return;
 
-  const share = buildShareDraft(bundle, pending.linkId);
-  if (!share) {
+  const action = buildActionDraft(bundle, pending.linkId);
+  if (!action) {
     clearPendingShare();
     return;
   }
 
-  showShareModal(share, { copied: true, launched: true });
+  showActionModal(action, { copied: true, launched: true });
 }
 
 async function copyShareText(copy) {
