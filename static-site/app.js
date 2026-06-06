@@ -3,14 +3,14 @@ import {
   buildAppUrl,
   buildNfcInstruction,
   buildPendingShareState,
-  buildShareLaunchUrl,
+  buildPlatformLaunchTarget,
   buildTrialMessage,
   editablePlatformSettings,
   isPendingShareState,
   isRewardActionLink,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260605-all-actions";
+} from "./core.mjs?v=20260606-rednote-app";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -214,17 +214,12 @@ async function startActionFlow(bundle, linkId) {
 
   savePendingShare(action.card.id, action.link.id);
   const copyPromise = copyShareText(action.copy);
-  const popup = window.open(action.launchUrl, "_blank", "noopener,noreferrer");
-  if (!popup) {
-    window.setTimeout(() => {
-      window.location.href = action.launchUrl;
-    }, 150);
-  }
+  const launchState = launchPlatform(action);
 
   const copied = await copyPromise;
   await recordClick(action.card, action.link.id);
 
-  showActionModal(action, { copied, launched: Boolean(popup) });
+  showActionModal(action, { copied, launched: launchState.launched, appAttempted: launchState.appAttempted });
 }
 
 function buildActionDraft(bundle, linkId) {
@@ -241,13 +236,13 @@ function buildActionDraft(bundle, linkId) {
     storeAddress: store.address,
     platform: link.platform,
   });
-  const launchUrl = buildShareLaunchUrl(link);
+  const launchTarget = buildPlatformLaunchTarget(link);
 
-  return { card, reward, link, copy, launchUrl };
+  return { card, reward, link, copy, launchTarget };
 }
 
 function showActionModal(action, state = {}) {
-  const { card, reward, link, copy, launchUrl } = action;
+  const { card, reward, link, copy } = action;
   const modalTitle =
     link.category === "share"
       ? `${link.platform} 文案${state.copied ? "已复制" : "已生成"}`
@@ -267,7 +262,7 @@ function showActionModal(action, state = {}) {
       <div class="copy-box">${escapeHtml(copy)}</div>
       <div class="grid cols-2" style="margin-top:14px">
         <button class="btn secondary" data-copy>再复制一次</button>
-        <a class="link-btn" data-platform-open href="${escapeAttr(launchUrl)}" target="_blank" rel="noopener noreferrer">重新打开平台</a>
+        <button class="btn secondary" data-platform-open>重新打开平台</button>
       </div>
       <button class="btn" data-claim style="width:100%; margin-top:12px">已完成，生成核销码</button>
       <button class="btn secondary" data-close style="width:100%; margin-top:10px">关闭</button>
@@ -279,6 +274,7 @@ function showActionModal(action, state = {}) {
     await copyShareText(copy);
   });
   modal.querySelector("[data-platform-open]").addEventListener("click", async () => {
+    launchPlatform(action);
     await recordClick(card, link.id);
   });
   modal.querySelector("[data-claim]").addEventListener("click", async () => {
@@ -291,6 +287,49 @@ function showActionModal(action, state = {}) {
     clearPendingShare();
     modal.remove();
   });
+}
+
+function launchPlatform(action) {
+  const target = action.launchTarget;
+  if (target?.appUrl && isMobileBrowser()) {
+    openAppWithFallback(target.appUrl, target.fallbackUrl);
+    return { launched: true, appAttempted: true };
+  }
+
+  const popup = window.open(target?.fallbackUrl || target?.url || "#", "_blank", "noopener,noreferrer");
+  if (!popup) {
+    window.setTimeout(() => {
+      window.location.href = target?.fallbackUrl || target?.url || "#";
+    }, 150);
+  }
+
+  return { launched: Boolean(popup), appAttempted: false };
+}
+
+function openAppWithFallback(appUrl, fallbackUrl) {
+  let didLeavePage = false;
+  const markLeave = () => {
+    didLeavePage = true;
+  };
+  const markHidden = () => {
+    if (document.hidden) markLeave();
+  };
+
+  document.addEventListener("visibilitychange", markHidden, { once: true });
+  window.addEventListener("pagehide", markLeave, { once: true });
+  window.location.href = appUrl;
+
+  window.setTimeout(() => {
+    document.removeEventListener("visibilitychange", markHidden);
+    window.removeEventListener("pagehide", markLeave);
+    if (!didLeavePage) {
+      window.location.href = fallbackUrl;
+    }
+  }, 1800);
+}
+
+function isMobileBrowser() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || "");
 }
 
 function savePendingShare(cardId, linkId) {

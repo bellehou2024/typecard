@@ -73,6 +73,29 @@ export function buildShareLaunchUrl(link) {
   return directPublishUrls[link?.id] || link?.url || "#";
 }
 
+export function buildPlatformLaunchTarget(link) {
+  const fallbackUrl = buildShareLaunchUrl(link);
+  const appLaunchUrls = {
+    rednote: "xhsdiscover://note/publish?source=typecard",
+  };
+
+  if (appLaunchUrls[link?.id]) {
+    return {
+      url: appLaunchUrls[link.id],
+      appUrl: appLaunchUrls[link.id],
+      fallbackUrl,
+      prefersSameTab: true,
+    };
+  }
+
+  return {
+    url: fallbackUrl,
+    appUrl: "",
+    fallbackUrl,
+    prefersSameTab: false,
+  };
+}
+
 export function isRewardActionLink(link) {
   return ["share", "review", "follow"].includes(link?.category);
 }
