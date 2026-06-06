@@ -12,7 +12,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-auth-redirect";
+} from "./core.mjs?v=20260606-auth-callback";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -39,7 +39,14 @@ async function render() {
   }
 
   const queryCardId = new URLSearchParams(window.location.search).get("card") || defaultCardId;
-  const route = routeFromHash(window.location.hash || `#/c/${queryCardId}`);
+  const authCallbackCardId = isSupabaseAuthCallbackHash(window.location.hash) ? queryCardId : "";
+  if (authCallbackCardId) {
+    await supabase.auth.getSession();
+    cleanupAuthCallbackUrl(authCallbackCardId);
+  }
+  const route = authCallbackCardId
+    ? `/c/${authCallbackCardId}`
+    : routeFromHash(window.location.hash || `#/c/${queryCardId}`);
 
   try {
     if (route === "/" || route === "") {
@@ -82,6 +89,15 @@ async function render() {
 
 function navigate(route) {
   window.location.hash = route;
+}
+
+function isSupabaseAuthCallbackHash(hash) {
+  return /^#(?:access_token|error|error_code)=/.test(String(hash || ""));
+}
+
+function cleanupAuthCallbackUrl(cardId) {
+  const query = new URLSearchParams({ card: cardId });
+  window.history.replaceState({}, document.title, `${window.location.pathname}?${query.toString()}#/c/${encodeURIComponent(cardId)}`);
 }
 
 function renderSetup() {
