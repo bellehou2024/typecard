@@ -76,7 +76,9 @@ export function buildShareLaunchUrl(link) {
 export function buildPlatformLaunchTarget(link) {
   const fallbackUrl = buildShareLaunchUrl(link);
   const appLaunchUrls = {
-    rednote: "xhsdiscover://",
+    rednote: "xhsdiscover://post_note/",
+    instagram: "instagram://camera",
+    facebook: "fb://composer",
   };
 
   if (appLaunchUrls[link?.id]) {

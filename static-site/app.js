@@ -10,7 +10,7 @@ import {
   isRewardActionLink,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-rednote-app-open";
+} from "./core.mjs?v=20260606-app-compose";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
