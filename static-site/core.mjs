@@ -19,6 +19,12 @@ export function buildClaimRoute(claim) {
   return `/claim/${id}?${query.toString()}`;
 }
 
+export function normalizeClaimResult(result) {
+  const claim = Array.isArray(result) ? result[0] : result;
+  if (!claim?.id || !claim?.code) return null;
+  return claim;
+}
+
 export function renderTemplate(template, values) {
   return String(template)
     .replaceAll("{{merchantName}}", values.merchantName ?? "")

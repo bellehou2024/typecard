@@ -10,9 +10,10 @@ import {
   isPendingShareState,
   isRewardActionLink,
   isWeChatBrowser,
+  normalizeClaimResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-claim-redirect";
+} from "./core.mjs?v=20260606-claim-visible";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -307,8 +308,8 @@ function showActionModal(action, state = {}) {
     try {
       const claim = await createClaim(card.id, reward.id, link.id);
       clearPendingShare();
-      modal.remove();
-      showClaim(claim);
+      showClaimInModal(modal, claim);
+      window.setTimeout(() => showClaim(claim), 250);
     } catch (error) {
       button.disabled = false;
       button.textContent = "已完成，生成核销码";
@@ -324,6 +325,19 @@ function showActionModal(action, state = {}) {
 function showClaim(claim) {
   window.location.hash = buildClaimRoute(claim);
   renderClaimCode(claim.code);
+}
+
+function showClaimInModal(modal, claim) {
+  modal.querySelector(".modal-card").innerHTML = `
+    <p class="muted">福利码已生成</p>
+    <h1 style="text-align:center; font-size:44px; margin:12px 0">${escapeHtml(claim.code)}</h1>
+    <p class="status-ok">请把这个领取码出示给店员。店员确认后会在后台核销。</p>
+    <button class="btn" data-show-claim-page style="width:100%; margin-top:12px">查看福利码页面</button>
+  `;
+  modal.querySelector("[data-show-claim-page]").addEventListener("click", () => {
+    modal.remove();
+    showClaim(claim);
+  });
 }
 
 function renderWeChatBrowserNotice() {
@@ -476,7 +490,9 @@ async function createClaim(cardId, rewardId, platform) {
     p_platform: platform,
   });
   if (error) throw error;
-  return data[0];
+  const claim = normalizeClaimResult(data);
+  if (!claim) throw new Error("福利码已生成，但返回数据异常。请刷新页面后重试。");
+  return claim;
 }
 
 function renderClaim() {
