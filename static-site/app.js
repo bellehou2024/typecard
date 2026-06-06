@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   buildAppUrl,
+  buildClaimRoute,
   buildNfcInstruction,
   buildPendingShareState,
   buildPlatformLaunchTarget,
@@ -11,7 +12,7 @@ import {
   isWeChatBrowser,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-wechat-guide";
+} from "./core.mjs?v=20260606-claim-redirect";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -299,16 +300,30 @@ function showActionModal(action, state = {}) {
     launchPlatform(action);
     await recordClick(card, link.id);
   });
-  modal.querySelector("[data-claim]")?.addEventListener("click", async () => {
-    const claim = await createClaim(card.id, reward.id, link.id);
-    clearPendingShare();
-    modal.remove();
-    navigate(`/claim/${claim.id}?code=${encodeURIComponent(claim.code)}`);
+  modal.querySelector("[data-claim]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "正在生成福利码...";
+    try {
+      const claim = await createClaim(card.id, reward.id, link.id);
+      clearPendingShare();
+      modal.remove();
+      showClaim(claim);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "已完成，生成核销码";
+      showInlineModalError(modal, error.message || "福利码生成失败，请再试一次。");
+    }
   });
   modal.querySelector("[data-close]").addEventListener("click", () => {
     clearPendingShare();
     modal.remove();
   });
+}
+
+function showClaim(claim) {
+  window.location.hash = buildClaimRoute(claim);
+  renderClaimCode(claim.code);
 }
 
 function renderWeChatBrowserNotice() {
@@ -338,6 +353,17 @@ function showWeChatBrowserModal() {
   `;
   document.body.append(modal);
   modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
+}
+
+function showInlineModalError(modal, message) {
+  const existing = modal.querySelector("[data-modal-error]");
+  if (existing) existing.remove();
+
+  const errorBox = document.createElement("p");
+  errorBox.className = "status-warn";
+  errorBox.dataset.modalError = "true";
+  errorBox.textContent = message;
+  modal.querySelector(".modal-card").append(errorBox);
 }
 
 function launchPlatform(action) {
@@ -456,6 +482,10 @@ async function createClaim(cardId, rewardId, platform) {
 function renderClaim() {
   const query = new URLSearchParams(window.location.hash.split("?")[1] || "");
   const code = query.get("code") || "TC------";
+  renderClaimCode(code);
+}
+
+function renderClaimCode(code) {
   app.innerHTML = `
     <main class="shell">
       <section class="wrap panel" style="text-align:center">

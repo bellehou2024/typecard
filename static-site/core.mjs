@@ -13,6 +13,12 @@ export function buildAppUrl(appOrigin, basePath, route) {
   return `${origin}${baseSegment}/#${normalizedRoute}`;
 }
 
+export function buildClaimRoute(claim) {
+  const id = encodeURIComponent(claim?.id || "");
+  const query = new URLSearchParams({ code: claim?.code || "" });
+  return `/claim/${id}?${query.toString()}`;
+}
+
 export function renderTemplate(template, values) {
   return String(template)
     .replaceAll("{{merchantName}}", values.merchantName ?? "")
