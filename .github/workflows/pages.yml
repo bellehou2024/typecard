@@ -35,6 +35,7 @@ jobs:
           window.TYPECARD_CONFIG = {
             SUPABASE_URL: "${{ secrets.SUPABASE_URL }}",
             SUPABASE_PUBLISHABLE_KEY: "${{ secrets.SUPABASE_PUBLISHABLE_KEY }}",
+            PUBLIC_SITE_URL: "https://bellehou2024.github.io/typecard/",
             GITHUB_PAGES_BASE_PATH: "${{ vars.PAGES_BASE_PATH }}",
             DEFAULT_CARD_ID: "table-a01",
             DEMO_LOGIN_EMAIL: "${{ vars.DEMO_LOGIN_EMAIL }}",

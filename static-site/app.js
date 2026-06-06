@@ -12,13 +12,16 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-lottery-flow";
+} from "./core.mjs?v=20260606-auth-redirect";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
 const defaultCardId = config.DEFAULT_CARD_ID || "table-a01";
 const basePath = config.GITHUB_PAGES_BASE_PATH || "";
-const appOrigin = window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
+const configuredPublicSiteUrl = normalizePublicSiteUrl(config.PUBLIC_SITE_URL);
+const appOrigin =
+  configuredPublicSiteUrl ||
+  window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
 const pendingShareStorageKey = "typecard.pendingShare.v1";
 let customerReturnCleanup = null;
 const supabase =
@@ -385,6 +388,11 @@ function showPrizeResult(modal, draw) {
 
 function buildCustomerAuthRedirectUrl(cardId) {
   return `${appOrigin}/?card=${encodeURIComponent(cardId)}`;
+}
+
+function normalizePublicSiteUrl(url) {
+  if (!url) return "";
+  return String(url).trim().replace(/\/index\.html$/, "").replace(/\/$/, "");
 }
 
 function renderWeChatBrowserNotice() {
