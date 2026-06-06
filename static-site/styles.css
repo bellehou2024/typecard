@@ -309,6 +309,26 @@ textarea {
   color: #34384a;
 }
 
+.lottery-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.lottery-prize {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  padding: 12px;
+}
+
+.lottery-prize p {
+  margin: 6px 0 0;
+  color: #697386;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .status-ok {
   border-radius: 8px;
   background: #ecfdf3;

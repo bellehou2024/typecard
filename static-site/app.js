@@ -1,7 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   buildAppUrl,
-  buildClaimRoute,
   buildNfcInstruction,
   buildPendingShareState,
   buildPlatformLaunchTarget,
@@ -10,10 +9,10 @@ import {
   isPendingShareState,
   isRewardActionLink,
   isWeChatBrowser,
-  normalizeClaimResult,
+  normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-claim-visible";
+} from "./core.mjs?v=20260606-lottery-flow";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -21,6 +20,7 @@ const defaultCardId = config.DEFAULT_CARD_ID || "table-a01";
 const basePath = config.GITHUB_PAGES_BASE_PATH || "";
 const appOrigin = window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
 const pendingShareStorageKey = "typecard.pendingShare.v1";
+let customerReturnCleanup = null;
 const supabase =
   config.SUPABASE_URL && config.SUPABASE_PUBLISHABLE_KEY
     ? createClient(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY)
@@ -35,7 +35,8 @@ async function render() {
     return;
   }
 
-  const route = routeFromHash(window.location.hash || `#/c/${defaultCardId}`);
+  const queryCardId = new URLSearchParams(window.location.search).get("card") || defaultCardId;
+  const route = routeFromHash(window.location.hash || `#/c/${queryCardId}`);
 
   try {
     if (route === "/" || route === "") {
@@ -126,13 +127,8 @@ async function loadCustomerBundle(cardId) {
 
 async function renderCustomer(cardId) {
   const bundle = await loadCustomerBundle(cardId);
-  const { card, merchant, store, links, reward } = bundle;
+  const { card, merchant, store, links } = bundle;
   await supabase.from("scan_events").insert({ merchant_id: card.merchant_id, card_id: card.id });
-
-  const primaryLinks = links.slice(0, 4);
-  const prizes = reward?.prizes?.length
-    ? reward.prizes
-    : ["钢化膜 1 张", "Type-C 数据线优惠", "维修检测优惠"];
 
   app.innerHTML = `
     <main class="mobile-wrap">
@@ -144,26 +140,7 @@ async function renderCustomer(cardId) {
         <p>${escapeHtml(card.location)}</p>
       </section>
       <section class="task-grid">
-        ${primaryLinks.map(renderTaskCard).join("")}
-      </section>
-      <section class="reward-box">
-        <div class="prizes">
-          ${prizes
-            .map(
-              (prize) => `
-                <div>
-                  <div class="prize-img"></div>
-                  <p>${escapeHtml(prize)}</p>
-                </div>
-              `,
-            )
-            .join("")}
-        </div>
-        <p class="muted">${escapeHtml(reward?.disclaimer || "福利用于感谢参与，不要求好评或指定内容。")}</p>
-      </section>
-      <section class="reward-box">
-        <h2>Get more chances to draw!</h2>
-        ${links.map(renderTaskRow).join("")}
+        ${links.map(renderTaskCard).join("")}
       </section>
     </main>
   `;
@@ -176,7 +153,8 @@ async function renderCustomer(cardId) {
       await recordClick(card, link.dataset.openId);
     });
   });
-  restorePendingShare(bundle);
+  bindCustomerReturnHandlers(bundle);
+  restoreCompletedTask(bundle);
 }
 
 function renderTaskCard(link) {
@@ -186,23 +164,6 @@ function renderTaskCard(link) {
       <div class="badge" style="background:${escapeHtml(link.accent)}">${escapeHtml(link.platform.slice(0, 2).toUpperCase())}</div>
       <p class="muted">${link.category === "share" ? "Post to" : taskPrefix(link)}</p>
       <h3>${escapeHtml(link.platform)}</h3>
-      ${
-        canClaimReward
-          ? `<button class="btn" data-action-id="${escapeHtml(link.id)}">${taskButtonText(link)}</button>`
-          : `<a class="link-btn" data-open-id="${escapeHtml(link.id)}" href="${escapeAttr(link.url)}" target="_blank" rel="noopener noreferrer">${taskButtonText(link)}</a>`
-      }
-    </div>
-  `;
-}
-
-function renderTaskRow(link) {
-  const canClaimReward = isRewardActionLink(link);
-  return `
-    <div class="header" style="margin:12px 0">
-      <div>
-        <strong>${escapeHtml(link.platform)}</strong>
-        <p class="muted" style="margin:4px 0">${escapeHtml(link.label)}</p>
-      </div>
       ${
         canClaimReward
           ? `<button class="btn" data-action-id="${escapeHtml(link.id)}">${taskButtonText(link)}</button>`
@@ -226,12 +187,19 @@ async function startActionFlow(bundle, linkId) {
   const copied = await copyPromise;
   await recordClick(action.card, action.link.id);
 
-  showActionModal(action, {
-    copied,
-    launched: launchState.launched,
-    appAttempted: launchState.appAttempted,
-    blockedByWeChat: launchState.blockedByWeChat,
-  });
+  if (launchState.blockedByWeChat) {
+    showWeChatBrowserModal();
+    return;
+  }
+
+  const pending = readPendingShare();
+  if (isPendingShareState(pending, action.card.id) && pending.leftAt) {
+    updatePendingShare(action.card.id, { taskCompletedAt: Date.now() });
+    showTaskCompleteModal(action);
+    return;
+  }
+
+  showPlatformOpenedModal(action, { copied, launched: launchState.launched });
 }
 
 function buildActionDraft(bundle, linkId) {
@@ -253,38 +221,24 @@ function buildActionDraft(bundle, linkId) {
   return { card, reward, link, copy, launchTarget };
 }
 
-function showActionModal(action, state = {}) {
-  const { card, reward, link, copy } = action;
-  const modalTitle =
-    state.blockedByWeChat
-      ? "请在系统浏览器打开"
-      : link.category === "share"
-        ? `${link.platform} 文案${state.copied ? "已复制" : "已生成"}`
-        : `${link.platform} 已打开`;
-  const actionHint = state.blockedByWeChat
-    ? "微信内置浏览器通常不能直接打开小红书、TikTok、Instagram 等第三方 App。请点右上角“…”选择在 Safari 或 Chrome 打开，再继续发布/评价。"
-    : link.category === "share"
-      ? state.copied
-        ? "已经复制文案并尝试打开发布入口。发布完成后回到这里领取福利码。"
-        : "当前浏览器没有允许自动复制，请手动复制下面文案，再打开发布页。"
-      : "已经尝试打开对应平台。完成评价、关注或联系后，回到这里领取福利码。";
-  const modalStatusClass = state.blockedByWeChat
-    ? "status-warn"
-    : state.copied || link.category !== "share"
-      ? "status-ok"
-      : "status-warn";
+function showPlatformOpenedModal(action, state = {}) {
+  const { link, copy } = action;
+  const modalTitle = `${link.platform} ${state.copied ? "文案已复制" : "已打开"}`;
+  const actionHint =
+    link.category === "share"
+      ? "请在 App 内完成发布。发布完成后切回这个页面，我们会自动继续抽奖流程。"
+      : "请在 App 内完成评价、关注或联系。完成后切回这个页面，我们会自动继续抽奖流程。";
   const modal = document.createElement("div");
   modal.className = "modal";
   modal.innerHTML = `
     <div class="modal-card">
       <h2>${escapeHtml(modalTitle)}</h2>
-      <p class="${modalStatusClass}">${escapeHtml(actionHint)}</p>
+      <p class="status-ok">${escapeHtml(actionHint)}</p>
       <div class="copy-box">${escapeHtml(copy)}</div>
       <div class="grid cols-2" style="margin-top:14px">
         <button class="btn secondary" data-copy>再复制一次</button>
-        <button class="btn secondary" data-platform-open>${state.blockedByWeChat ? "我已换浏览器，打开平台" : "重新打开平台"}</button>
+        <button class="btn secondary" data-platform-open>重新打开平台</button>
       </div>
-      ${state.blockedByWeChat ? "" : `<button class="btn" data-claim style="width:100%; margin-top:12px">已完成，生成核销码</button>`}
       <button class="btn secondary" data-close style="width:100%; margin-top:10px">关闭</button>
     </div>
   `;
@@ -299,22 +253,7 @@ function showActionModal(action, state = {}) {
       return;
     }
     launchPlatform(action);
-    await recordClick(card, link.id);
-  });
-  modal.querySelector("[data-claim]")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = "正在生成福利码...";
-    try {
-      const claim = await createClaim(card.id, reward.id, link.id);
-      clearPendingShare();
-      showClaimInModal(modal, claim);
-      window.setTimeout(() => showClaim(claim), 250);
-    } catch (error) {
-      button.disabled = false;
-      button.textContent = "已完成，生成核销码";
-      showInlineModalError(modal, error.message || "福利码生成失败，请再试一次。");
-    }
+    await recordClick(action.card, link.id);
   });
   modal.querySelector("[data-close]").addEventListener("click", () => {
     clearPendingShare();
@@ -322,22 +261,130 @@ function showActionModal(action, state = {}) {
   });
 }
 
-function showClaim(claim) {
-  window.location.hash = buildClaimRoute(claim);
-  renderClaimCode(claim.code);
+function showTaskCompleteModal(action) {
+  const existing = document.querySelector("[data-task-complete-modal]");
+  if (existing) return;
+
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.dataset.taskCompleteModal = "true";
+  modal.innerHTML = `
+    <div class="modal-card">
+      <h2>恭喜，任务完成</h2>
+      <p class="status-ok">我们检测到你已经回到页面。接下来请用 Google 登录，然后参与一次抽奖。</p>
+      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">继续抽奖</button>
+    </div>
+  `;
+  document.body.append(modal);
+  modal.querySelector("[data-continue-lottery]").addEventListener("click", () => beginLotteryFlow(action, modal));
 }
 
-function showClaimInModal(modal, claim) {
+async function beginLotteryFlow(action, modal) {
   modal.querySelector(".modal-card").innerHTML = `
-    <p class="muted">福利码已生成</p>
-    <h1 style="text-align:center; font-size:44px; margin:12px 0">${escapeHtml(claim.code)}</h1>
-    <p class="status-ok">请把这个领取码出示给店员。店员确认后会在后台核销。</p>
-    <button class="btn" data-show-claim-page style="width:100%; margin-top:12px">查看福利码页面</button>
+    <h2>正在检查登录状态</h2>
+    <p class="status-ok">请稍等，我们正在准备抽奖。</p>
   `;
-  modal.querySelector("[data-show-claim-page]").addEventListener("click", () => {
-    modal.remove();
-    showClaim(claim);
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!isGoogleSession(sessionData.session)) {
+    showGoogleLoginStep(action, modal);
+    return;
+  }
+
+  try {
+    await showLotteryStep(action, modal);
+  } catch (error) {
+    showInlineModalError(modal, error.message || "抽奖准备失败，请再试一次。");
+  }
+}
+
+function showGoogleLoginStep(action, modal) {
+  modal.querySelector(".modal-card").innerHTML = `
+    <h2>请用 Google 登录</h2>
+    <p class="status-ok">登录只是为了限制每个用户只能参与一次活动。</p>
+    <button class="btn" data-google-login style="width:100%; margin-top:12px">使用 Google 登录</button>
+  `;
+  modal.querySelector("[data-google-login]").addEventListener("click", async () => {
+    updatePendingShare(action.card.id, {
+      taskCompletedAt: Date.now(),
+      linkId: action.link.id,
+    });
+    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: buildCustomerAuthRedirectUrl(action.card.id),
+      },
+    });
+    if (error) showInlineModalError(modal, error.message);
   });
+}
+
+function isGoogleSession(session) {
+  return Boolean(session?.user?.app_metadata?.provider === "google");
+}
+
+async function showLotteryStep(action, modal) {
+  const status = await getLotteryStatus(action.card.id);
+  if (status?.has_drawn) {
+    clearPendingShare();
+    showPrizeResult(modal, {
+      prize_name: status.prize_name,
+      prize_description: status.prize_description,
+      drawn_at: status.drawn_at,
+      already_drawn: true,
+    });
+    return;
+  }
+
+  const prizes = await loadLotteryPrizes(action.card.merchant_id);
+  modal.querySelector(".modal-card").innerHTML = `
+    <h2>开始抽奖</h2>
+    <p class="muted">每个 Google 用户只能抽一次。奖品先用占位，后续按你的库存和概率替换。</p>
+    <div class="lottery-grid">
+      ${prizes.map(renderLotteryPrize).join("")}
+    </div>
+    <button class="btn" data-draw-lottery style="width:100%; margin-top:12px">立即抽奖</button>
+  `;
+  modal.querySelector("[data-draw-lottery]").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "抽奖中...";
+    try {
+      const draw = await drawLottery(action.card.id, action.link.id);
+      clearPendingShare();
+      showPrizeResult(modal, draw);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "立即抽奖";
+      showInlineModalError(modal, error.message || "抽奖失败，请再试一次。");
+    }
+  });
+}
+
+function renderLotteryPrize(prize) {
+  return `
+    <div class="lottery-prize">
+      <strong>${escapeHtml(prize.name)}</strong>
+      <p>${escapeHtml(prize.description || "截图到店领取。")}</p>
+    </div>
+  `;
+}
+
+function showPrizeResult(modal, draw) {
+  const alreadyText = draw.already_drawn ? "你已经参与过本次活动" : "恭喜中奖";
+  modal.querySelector(".modal-card").innerHTML = `
+    <p class="muted">${escapeHtml(alreadyText)}</p>
+    <h1 style="text-align:center; font-size:34px; margin:12px 0">${escapeHtml(draw.prize_name)}</h1>
+    <p class="status-ok">${escapeHtml(draw.prize_description || "请截图保存，到店出示给店员领取奖品。")}</p>
+    <p class="muted" style="text-align:center">请截图这个页面，到店凭截图领取奖品。</p>
+    <button class="btn secondary" data-close style="width:100%; margin-top:12px">我已截图</button>
+  `;
+  modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
+}
+
+function buildCustomerAuthRedirectUrl(cardId) {
+  return `${appOrigin}/?card=${encodeURIComponent(cardId)}`;
 }
 
 function renderWeChatBrowserNotice() {
@@ -437,6 +484,18 @@ function savePendingShare(cardId, linkId) {
   }
 }
 
+function updatePendingShare(cardId, patch) {
+  const pending = readPendingShare();
+  if (!isPendingShareState(pending, cardId)) return null;
+  const next = { ...pending, ...patch };
+  try {
+    window.sessionStorage?.setItem(pendingShareStorageKey, JSON.stringify(next));
+  } catch {
+    // Ignore storage failures.
+  }
+  return next;
+}
+
 function readPendingShare() {
   try {
     return JSON.parse(window.sessionStorage?.getItem(pendingShareStorageKey) || "null");
@@ -453,9 +512,43 @@ function clearPendingShare() {
   }
 }
 
-function restorePendingShare(bundle) {
+function bindCustomerReturnHandlers(bundle) {
+  if (customerReturnCleanup) customerReturnCleanup();
+
+  const markLeft = () => {
+    updatePendingShare(bundle.card.id, { leftAt: Date.now() });
+  };
+  const handleReturn = () => {
+    window.setTimeout(() => restoreCompletedTask(bundle), 150);
+  };
+  const handleVisibility = () => {
+    if (document.hidden) {
+      markLeft();
+    } else {
+      handleReturn();
+    }
+  };
+
+  document.addEventListener("visibilitychange", handleVisibility);
+  window.addEventListener("pagehide", markLeft);
+  window.addEventListener("pageshow", handleReturn);
+  window.addEventListener("focus", handleReturn);
+
+  customerReturnCleanup = () => {
+    document.removeEventListener("visibilitychange", handleVisibility);
+    window.removeEventListener("pagehide", markLeft);
+    window.removeEventListener("pageshow", handleReturn);
+    window.removeEventListener("focus", handleReturn);
+  };
+}
+
+function restoreCompletedTask(bundle) {
   const pending = readPendingShare();
   if (!isPendingShareState(pending, bundle.card.id)) return;
+  if (document.querySelector("[data-task-complete-modal]")) return;
+  const returnedFromApp =
+    Boolean(pending.leftAt || pending.taskCompletedAt) || Date.now() - pending.createdAt > 2500;
+  if (!returnedFromApp) return;
 
   const action = buildActionDraft(bundle, pending.linkId);
   if (!action) {
@@ -463,7 +556,10 @@ function restorePendingShare(bundle) {
     return;
   }
 
-  showActionModal(action, { copied: true, launched: true });
+  const completedAt = pending.taskCompletedAt || Date.now();
+  updatePendingShare(bundle.card.id, { taskCompletedAt: completedAt });
+  document.querySelectorAll(".modal").forEach((modal) => modal.remove());
+  showTaskCompleteModal(action);
 }
 
 async function copyShareText(copy) {
@@ -483,16 +579,41 @@ async function recordClick(card, linkId) {
   });
 }
 
-async function createClaim(cardId, rewardId, platform) {
-  const { data, error } = await supabase.rpc("create_reward_claim_public", {
+async function getLotteryStatus(cardId) {
+  const { data, error } = await supabase.rpc("get_lottery_status_public", {
     p_card_id: cardId,
-    p_reward_id: rewardId,
-    p_platform: platform,
   });
   if (error) throw error;
-  const claim = normalizeClaimResult(data);
-  if (!claim) throw new Error("福利码已生成，但返回数据异常。请刷新页面后重试。");
-  return claim;
+  return Array.isArray(data) ? data[0] : data;
+}
+
+async function loadLotteryPrizes(merchantId) {
+  const { data, error } = await supabase
+    .from("lottery_prizes")
+    .select("id,name,description")
+    .eq("merchant_id", merchantId)
+    .eq("enabled", true)
+    .order("sort_order", { ascending: true })
+    .limit(3);
+  if (error) throw error;
+  return data?.length
+    ? data
+    : [
+        { name: "占位奖品 A", description: "截图到店领取。" },
+        { name: "占位奖品 B", description: "截图到店领取。" },
+        { name: "占位奖品 C", description: "截图到店领取。" },
+      ];
+}
+
+async function drawLottery(cardId, linkId) {
+  const { data, error } = await supabase.rpc("draw_lottery_public", {
+    p_card_id: cardId,
+    p_task_link_id: linkId,
+  });
+  if (error) throw error;
+  const draw = normalizeLotteryDrawResult(data);
+  if (!draw) throw new Error("抽奖已完成，但返回数据异常。请刷新页面后重试。");
+  return draw;
 }
 
 function renderClaim() {

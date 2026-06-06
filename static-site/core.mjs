@@ -25,6 +25,12 @@ export function normalizeClaimResult(result) {
   return claim;
 }
 
+export function normalizeLotteryDrawResult(result) {
+  const draw = Array.isArray(result) ? result[0] : result;
+  if (!draw?.draw_id || !draw?.prize_name) return null;
+  return draw;
+}
+
 export function renderTemplate(template, values) {
   return String(template)
     .replaceAll("{{merchantName}}", values.merchantName ?? "")
@@ -125,6 +131,8 @@ export function buildPendingShareState({ cardId, linkId, createdAt = Date.now() 
     cardId,
     linkId,
     createdAt,
+    leftAt: null,
+    taskCompletedAt: null,
   };
 }
 
@@ -159,8 +167,9 @@ export function buildTrialMessage({
     "试用流程：",
     "1. 顾客扫二维码进入页面。",
     "2. 选择小红书、TikTok、Google、Facebook、Instagram 或 WhatsApp。",
-    "3. 发布/评价后回到页面生成福利码。",
-    "4. 到店出示 TC 开头的福利码，店员在后台核销。",
+    "3. 发布/评价后回到页面，系统弹出任务完成提示。",
+    "4. 顾客用 Google 登录后参与一次抽奖。",
+    "5. 中奖后截图，到店凭截图领取奖品。",
   ].join("\n");
 }
 
