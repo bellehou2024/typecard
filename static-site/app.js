@@ -8,9 +8,10 @@ import {
   editablePlatformSettings,
   isPendingShareState,
   isRewardActionLink,
+  isWeChatBrowser,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-app-compose";
+} from "./core.mjs?v=20260606-wechat-guide";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -133,6 +134,7 @@ async function renderCustomer(cardId) {
 
   app.innerHTML = `
     <main class="mobile-wrap">
+      ${renderWeChatBrowserNotice()}
       <section class="hero">
         <div class="brand-pill">${escapeHtml(merchant.name)}</div>
         <p>${escapeHtml(store.name)}</p>
@@ -214,12 +216,20 @@ async function startActionFlow(bundle, linkId) {
 
   savePendingShare(action.card.id, action.link.id);
   const copyPromise = copyShareText(action.copy);
-  const launchState = launchPlatform(action);
+  const inWeChat = isWeChatBrowser(window.navigator.userAgent);
+  const launchState = inWeChat
+    ? { launched: false, appAttempted: false, blockedByWeChat: true }
+    : launchPlatform(action);
 
   const copied = await copyPromise;
   await recordClick(action.card, action.link.id);
 
-  showActionModal(action, { copied, launched: launchState.launched, appAttempted: launchState.appAttempted });
+  showActionModal(action, {
+    copied,
+    launched: launchState.launched,
+    appAttempted: launchState.appAttempted,
+    blockedByWeChat: launchState.blockedByWeChat,
+  });
 }
 
 function buildActionDraft(bundle, linkId) {
@@ -244,27 +254,35 @@ function buildActionDraft(bundle, linkId) {
 function showActionModal(action, state = {}) {
   const { card, reward, link, copy } = action;
   const modalTitle =
-    link.category === "share"
-      ? `${link.platform} 文案${state.copied ? "已复制" : "已生成"}`
-      : `${link.platform} 已打开`;
-  const actionHint =
-    link.category === "share"
+    state.blockedByWeChat
+      ? "请在系统浏览器打开"
+      : link.category === "share"
+        ? `${link.platform} 文案${state.copied ? "已复制" : "已生成"}`
+        : `${link.platform} 已打开`;
+  const actionHint = state.blockedByWeChat
+    ? "微信内置浏览器通常不能直接打开小红书、TikTok、Instagram 等第三方 App。请点右上角“…”选择在 Safari 或 Chrome 打开，再继续发布/评价。"
+    : link.category === "share"
       ? state.copied
         ? "已经复制文案并尝试打开发布入口。发布完成后回到这里领取福利码。"
         : "当前浏览器没有允许自动复制，请手动复制下面文案，再打开发布页。"
       : "已经尝试打开对应平台。完成评价、关注或联系后，回到这里领取福利码。";
+  const modalStatusClass = state.blockedByWeChat
+    ? "status-warn"
+    : state.copied || link.category !== "share"
+      ? "status-ok"
+      : "status-warn";
   const modal = document.createElement("div");
   modal.className = "modal";
   modal.innerHTML = `
     <div class="modal-card">
       <h2>${escapeHtml(modalTitle)}</h2>
-      <p class="${state.copied || link.category !== "share" ? "status-ok" : "status-warn"}">${escapeHtml(actionHint)}</p>
+      <p class="${modalStatusClass}">${escapeHtml(actionHint)}</p>
       <div class="copy-box">${escapeHtml(copy)}</div>
       <div class="grid cols-2" style="margin-top:14px">
         <button class="btn secondary" data-copy>再复制一次</button>
-        <button class="btn secondary" data-platform-open>重新打开平台</button>
+        <button class="btn secondary" data-platform-open>${state.blockedByWeChat ? "我已换浏览器，打开平台" : "重新打开平台"}</button>
       </div>
-      <button class="btn" data-claim style="width:100%; margin-top:12px">已完成，生成核销码</button>
+      ${state.blockedByWeChat ? "" : `<button class="btn" data-claim style="width:100%; margin-top:12px">已完成，生成核销码</button>`}
       <button class="btn secondary" data-close style="width:100%; margin-top:10px">关闭</button>
     </div>
   `;
@@ -274,10 +292,14 @@ function showActionModal(action, state = {}) {
     await copyShareText(copy);
   });
   modal.querySelector("[data-platform-open]").addEventListener("click", async () => {
+    if (isWeChatBrowser(window.navigator.userAgent)) {
+      showWeChatBrowserModal();
+      return;
+    }
     launchPlatform(action);
     await recordClick(card, link.id);
   });
-  modal.querySelector("[data-claim]").addEventListener("click", async () => {
+  modal.querySelector("[data-claim]")?.addEventListener("click", async () => {
     const claim = await createClaim(card.id, reward.id, link.id);
     clearPendingShare();
     modal.remove();
@@ -287,6 +309,35 @@ function showActionModal(action, state = {}) {
     clearPendingShare();
     modal.remove();
   });
+}
+
+function renderWeChatBrowserNotice() {
+  if (!isWeChatBrowser(window.navigator.userAgent)) return "";
+
+  return `
+    <section class="wechat-notice">
+      <strong>请使用系统浏览器打开</strong>
+      <p>微信内置浏览器无法稳定唤起小红书、TikTok、Instagram 等 App。请点右上角“…”选择在 Safari 或 Chrome 打开。</p>
+    </section>
+  `;
+}
+
+function showWeChatBrowserModal() {
+  const existing = document.querySelector("[data-wechat-modal]");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.dataset.wechatModal = "true";
+  modal.innerHTML = `
+    <div class="modal-card">
+      <h2>请在系统浏览器打开</h2>
+      <p class="status-warn">微信内置浏览器不能稳定打开第三方 App。请点右上角“…”选择在 Safari 或 Chrome 打开，再继续发布/评价。</p>
+      <button class="btn" data-close style="width:100%; margin-top:12px">知道了</button>
+    </div>
+  `;
+  document.body.append(modal);
+  modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
 }
 
 function launchPlatform(action) {

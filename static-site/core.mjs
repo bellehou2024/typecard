@@ -104,6 +104,10 @@ export function isRewardActionLink(link) {
   return ["share", "review", "follow"].includes(link?.category);
 }
 
+export function isWeChatBrowser(userAgent = "") {
+  return /MicroMessenger/i.test(String(userAgent));
+}
+
 export function buildPendingShareState({ cardId, linkId, createdAt = Date.now() }) {
   return {
     cardId,

@@ -245,6 +245,26 @@ textarea {
   padding: 16px;
 }
 
+.wechat-notice {
+  margin: 14px 16px 0;
+  border: 1px solid #fed7aa;
+  border-radius: 16px;
+  background: #fff7ed;
+  color: #9a3412;
+  padding: 12px 14px;
+}
+
+.wechat-notice strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wechat-notice p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .prizes {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
