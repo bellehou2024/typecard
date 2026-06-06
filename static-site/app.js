@@ -10,7 +10,7 @@ import {
   isRewardActionLink,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-rednote-app";
+} from "./core.mjs?v=20260606-rednote-app-open";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -292,7 +292,7 @@ function showActionModal(action, state = {}) {
 function launchPlatform(action) {
   const target = action.launchTarget;
   if (target?.appUrl && isMobileBrowser()) {
-    openAppWithFallback(target.appUrl, target.fallbackUrl);
+    openAppWithFallback(target.appUrl, target.fallbackUrl, { autoFallback: target.autoFallback !== false });
     return { launched: true, appAttempted: true };
   }
 
@@ -306,7 +306,8 @@ function launchPlatform(action) {
   return { launched: Boolean(popup), appAttempted: false };
 }
 
-function openAppWithFallback(appUrl, fallbackUrl) {
+function openAppWithFallback(appUrl, fallbackUrl, options = {}) {
+  const autoFallback = options.autoFallback !== false;
   let didLeavePage = false;
   const markLeave = () => {
     didLeavePage = true;
@@ -318,6 +319,8 @@ function openAppWithFallback(appUrl, fallbackUrl) {
   document.addEventListener("visibilitychange", markHidden, { once: true });
   window.addEventListener("pagehide", markLeave, { once: true });
   window.location.href = appUrl;
+
+  if (!autoFallback) return;
 
   window.setTimeout(() => {
     document.removeEventListener("visibilitychange", markHidden);

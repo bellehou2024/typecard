@@ -76,7 +76,7 @@ export function buildShareLaunchUrl(link) {
 export function buildPlatformLaunchTarget(link) {
   const fallbackUrl = buildShareLaunchUrl(link);
   const appLaunchUrls = {
-    rednote: "xhsdiscover://note/publish?source=typecard",
+    rednote: "xhsdiscover://",
   };
 
   if (appLaunchUrls[link?.id]) {
@@ -85,6 +85,7 @@ export function buildPlatformLaunchTarget(link) {
       appUrl: appLaunchUrls[link.id],
       fallbackUrl,
       prefersSameTab: true,
+      autoFallback: false,
     };
   }
 
@@ -93,6 +94,7 @@ export function buildPlatformLaunchTarget(link) {
     appUrl: "",
     fallbackUrl,
     prefersSameTab: false,
+    autoFallback: true,
   };
 }
 
