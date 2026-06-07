@@ -107,7 +107,8 @@ export function buildPlatformLaunchTarget(link) {
     rednote: "xhsdiscover://post_note/",
     tiktok: "tiktok://",
     instagram: "instagram://camera",
-    facebook: "fb://composer",
+    facebook: `fb://facewebmodal/f?href=${encodeURIComponent(fallbackUrl)}`,
+    whatsapp: "whatsapp://send",
   };
 
   if (appLaunchUrls[link?.id]) {

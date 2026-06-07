@@ -157,6 +157,7 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   const google = buildPlatformLaunchTarget({ id: "google", url: "https://www.google.com/maps/search/?api=1&query=SG%20Phone%20Trade" });
   const instagram = buildPlatformLaunchTarget({ id: "instagram", url: "https://www.instagram.com/" });
   const facebook = buildPlatformLaunchTarget({ id: "facebook", url: "https://www.facebook.com/" });
+  const whatsapp = buildPlatformLaunchTarget({ id: "whatsapp", url: "https://wa.me/" });
 
   assert.equal(target.url, "xhsdiscover://post_note/");
   assert.equal(target.appUrl, "xhsdiscover://post_note/");
@@ -171,8 +172,10 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(google.autoFallback, false);
   assert.equal(instagram.appUrl, "instagram://camera");
   assert.equal(instagram.autoFallback, false);
-  assert.equal(facebook.appUrl, "fb://composer");
+  assert.equal(facebook.appUrl, "fb://facewebmodal/f?href=https%3A%2F%2Fwww.facebook.com%2F");
   assert.equal(facebook.autoFallback, false);
+  assert.equal(whatsapp.appUrl, "whatsapp://send");
+  assert.equal(whatsapp.autoFallback, false);
 });
 
 test("pending share state records enough data to resume reward claiming", () => {

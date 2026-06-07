@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-google-maps-search";
+} from "./core.mjs?v=20260607-app-deeplinks";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -430,7 +430,7 @@ function showInlineModalError(modal, message) {
 
 function launchPlatform(action) {
   const target = action.launchTarget;
-  if (target?.appUrl && isMobileBrowser()) {
+  if (target?.appUrl) {
     openAppWithFallback(target.appUrl, target.fallbackUrl, { autoFallback: target.autoFallback !== false });
     return { launched: true, appAttempted: true };
   }
@@ -468,10 +468,6 @@ function openAppWithFallback(appUrl, fallbackUrl, options = {}) {
       window.location.href = fallbackUrl;
     }
   }, 1800);
-}
-
-function isMobileBrowser() {
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || "");
 }
 
 function savePendingShare(cardId, linkId) {
