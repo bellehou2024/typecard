@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-google-maps-search";
+} from "./core.mjs?v=20260607-google-review-options";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -202,6 +202,8 @@ async function startActionFlow(bundle, linkId) {
   const inWeChat = isWeChatBrowser(window.navigator.userAgent);
   const launchState = inWeChat
     ? { launched: false, appAttempted: false, blockedByWeChat: true }
+    : action.link.id === "google"
+      ? { launched: false, appAttempted: false, waitingForChoice: true }
     : launchPlatform(action);
 
   const copied = await copyPromise;
@@ -209,6 +211,11 @@ async function startActionFlow(bundle, linkId) {
 
   if (launchState.blockedByWeChat) {
     showWeChatBrowserModal();
+    return;
+  }
+
+  if (action.link.id === "google") {
+    showGoogleReviewOptionsModal(action, { copied });
     return;
   }
 
@@ -243,6 +250,44 @@ function buildActionDraft(bundle, linkId) {
   });
 
   return { card, reward, link, copy, launchTarget };
+}
+
+function showGoogleReviewOptionsModal(action, state = {}) {
+  const { link, copy } = action;
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.innerHTML = `
+    <div class="modal-card">
+      <h2>Google 评价</h2>
+      <p class="status-ok">优先点“直接写评价”。如果 Google 没有弹出评价框，再用地图入口打开店铺页。</p>
+      <div class="copy-box">${escapeHtml(copy)}</div>
+      <div class="grid cols-2" style="margin-top:14px">
+        <button class="btn" data-google-review>直接写评价</button>
+        <button class="btn secondary" data-google-map>打开地图店铺</button>
+      </div>
+      <div class="grid cols-2" style="margin-top:10px">
+        <button class="btn secondary" data-copy>${state.copied ? "再复制一次" : "复制文案"}</button>
+        <button class="btn secondary" data-close>关闭</button>
+      </div>
+    </div>
+  `;
+  document.body.append(modal);
+
+  modal.querySelector("[data-google-review]").addEventListener("click", async () => {
+    await recordClick(action.card, link.id);
+    window.location.href = link.url;
+  });
+  modal.querySelector("[data-google-map]").addEventListener("click", async () => {
+    launchPlatform(action);
+    await recordClick(action.card, link.id);
+  });
+  modal.querySelector("[data-copy]").addEventListener("click", async () => {
+    await copyShareText(copy);
+  });
+  modal.querySelector("[data-close]").addEventListener("click", () => {
+    clearPendingShare();
+    modal.remove();
+  });
 }
 
 function showPlatformOpenedModal(action, state = {}) {
