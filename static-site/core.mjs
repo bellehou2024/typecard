@@ -189,6 +189,10 @@ export function isRewardActionLink(link) {
   return ["share", "review", "follow"].includes(link?.category);
 }
 
+export function canUseDeviceLottery(link) {
+  return link?.id === "google";
+}
+
 export function isWeChatBrowser(userAgent = "") {
   return /MicroMessenger/i.test(String(userAgent));
 }

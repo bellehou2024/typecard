@@ -5,7 +5,9 @@ import {
   buildPendingShareState,
   buildPlatformLaunchTarget,
   buildTrialMessage,
+  canUseDeviceLottery,
   editablePlatformSettings,
+  getStoredParticipantToken,
   isGoogleEmailUser,
   isPendingShareState,
   isRewardActionLink,
@@ -13,7 +15,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-google-auth-callback-fix";
+} from "./core.mjs?v=20260607-google-direct-lottery";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -23,7 +25,7 @@ const configuredPublicSiteUrl = normalizePublicSiteUrl(config.PUBLIC_SITE_URL);
 const appOrigin =
   configuredPublicSiteUrl ||
   window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
-const customerPageVersion = "20260607-google-auth-callback-fix";
+const customerPageVersion = "20260607-google-direct-lottery";
 const pendingShareStorageKey = "typecard.pendingShare.v1";
 let customerReturnCleanup = null;
 const supabase =
@@ -123,6 +125,13 @@ function isSupabaseAuthCallbackHash(hash) {
 function cleanupAuthCallbackUrl(cardId) {
   const query = new URLSearchParams({ v: customerPageVersion, card: cardId });
   window.history.replaceState({}, document.title, `${window.location.pathname}?${query.toString()}#/c/${encodeURIComponent(cardId)}`);
+}
+
+function getDeviceLotteryToken(cardId) {
+  return getStoredParticipantToken(window.localStorage, cardId, () => {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
 }
 
 function renderSetup() {
@@ -367,12 +376,23 @@ function showTaskCompleteModal(action) {
   modal.innerHTML = `
     <div class="modal-card">
       <h2>恭喜，任务完成</h2>
-      <p class="status-ok">我们检测到你已经回到页面。使用 Google 邮箱登录后即可参与抽奖。</p>
-      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">用 Google 邮箱登录去抽奖</button>
+      <p class="status-ok">${escapeHtml(taskCompletionText(action))}</p>
+      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">${escapeHtml(continueLotteryButtonText(action))}</button>
     </div>
   `;
   document.body.append(modal);
   modal.querySelector("[data-continue-lottery]").addEventListener("click", () => beginLotteryFlow(action, modal));
+}
+
+function taskCompletionText(action) {
+  if (canUseDeviceLottery(action.link)) {
+    return "我们检测到你已经回到页面。Google 评价不需要再次登录 Google，下一步可以直接抽奖。";
+  }
+  return "我们检测到你已经回到页面。使用 Google 邮箱登录后即可参与抽奖。";
+}
+
+function continueLotteryButtonText(action) {
+  return canUseDeviceLottery(action.link) ? "直接去抽奖" : "用 Google 邮箱登录去抽奖";
 }
 
 async function beginLotteryFlow(action, modal) {
@@ -382,6 +402,11 @@ async function beginLotteryFlow(action, modal) {
   `;
 
   try {
+    if (canUseDeviceLottery(action.link)) {
+      await showLotteryStep(action, modal, { participantToken: getDeviceLotteryToken(action.card.id) });
+      return;
+    }
+
     const { data } = await supabase.auth.getUser();
     if (isGoogleEmailUser(data.user)) {
       await showLotteryStep(action, modal);
@@ -393,14 +418,18 @@ async function beginLotteryFlow(action, modal) {
   }
 }
 
-async function showLotteryStep(action, modal) {
-  const { data } = await supabase.auth.getUser();
-  if (!isGoogleEmailUser(data.user)) {
-    showGoogleEmailVerificationStep(action, modal);
-    return;
+async function showLotteryStep(action, modal, options = {}) {
+  const participantToken = options.participantToken ?? null;
+  const usesDeviceLottery = canUseDeviceLottery(action.link) && participantToken;
+  if (!usesDeviceLottery) {
+    const { data } = await supabase.auth.getUser();
+    if (!isGoogleEmailUser(data.user)) {
+      showGoogleEmailVerificationStep(action, modal);
+      return;
+    }
   }
 
-  const status = await getLotteryStatus(action.card.id);
+  const status = await getLotteryStatus(action.card.id, participantToken);
   if (status?.has_drawn) {
     clearPendingShare();
     showPrizeResult(modal, {
@@ -415,7 +444,7 @@ async function showLotteryStep(action, modal) {
   const prizes = await loadLotteryPrizes(action.card.merchant_id);
   modal.querySelector(".modal-card").innerHTML = `
     <h2>开始抽奖</h2>
-    <p class="muted">同一个 Google 邮箱只能参与一次。奖品按后台设置的概率和库存抽取。</p>
+    <p class="muted">${escapeHtml(lotteryLimitText(action, usesDeviceLottery))}</p>
     <div class="lottery-grid">
       ${prizes.map(renderLotteryPrize).join("")}
     </div>
@@ -426,7 +455,7 @@ async function showLotteryStep(action, modal) {
     button.disabled = true;
     button.textContent = "抽奖中...";
     try {
-      const draw = await drawLottery(action.card.id, action.link.id);
+      const draw = await drawLottery(action.card.id, action.link.id, participantToken);
       clearPendingShare();
       showPrizeResult(modal, draw);
     } catch (error) {
@@ -435,6 +464,13 @@ async function showLotteryStep(action, modal) {
       showInlineModalError(modal, error.message || "抽奖失败，请再试一次。");
     }
   });
+}
+
+function lotteryLimitText(action, usesDeviceLottery) {
+  if (usesDeviceLottery && canUseDeviceLottery(action.link)) {
+    return "Google 评价完成后，本手机浏览器只能参与一次。奖品按后台设置的概率和库存抽取。";
+  }
+  return "同一个 Google 邮箱只能参与一次。奖品按后台设置的概率和库存抽取。";
 }
 
 function showGoogleEmailVerificationStep(action, modal) {

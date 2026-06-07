@@ -15,6 +15,7 @@ import {
   extractGoogleReviewCid,
   getStoredParticipantToken,
   isPendingShareState,
+  canUseDeviceLottery,
   isGoogleEmailUser,
   isRewardActionLink,
   isWeChatBrowser,
@@ -122,6 +123,14 @@ test("getStoredParticipantToken reuses a local token per card", () => {
   assert.equal(getStoredParticipantToken(localStorage, "table-a01", generator), "token-1");
   assert.equal(getStoredParticipantToken(localStorage, "table-a01", generator), "token-1");
   assert.equal(getStoredParticipantToken(localStorage, "table-b02", generator), "token-2");
+});
+
+test("canUseDeviceLottery only allows Google review to skip second Google login", () => {
+  assert.equal(canUseDeviceLottery({ id: "google" }), true);
+  assert.equal(canUseDeviceLottery({ id: "rednote" }), false);
+  assert.equal(canUseDeviceLottery({ id: "tiktok" }), false);
+  assert.equal(canUseDeviceLottery({ id: "instagram" }), false);
+  assert.equal(canUseDeviceLottery(null), false);
 });
 
 test("isGoogleEmailUser only accepts Google OAuth users with email addresses", () => {
