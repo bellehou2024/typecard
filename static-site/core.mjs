@@ -132,10 +132,10 @@ export function buildGoogleMapsLaunchTarget(reviewUrl) {
     };
   }
 
-  const mapsUrl = `https://www.google.com/maps?cid=${cid}`;
+  const mapsUrl = `https://maps.google.com/?cid=${cid}`;
   return {
-    appUrl: `comgooglemapsurl://www.google.com/maps?cid=${cid}`,
-    androidAppUrl: `intent://www.google.com/maps?cid=${cid}#Intent;scheme=https;package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(reviewUrl)};end`,
+    appUrl: `comgooglemapsurl://maps.google.com/?cid=${cid}`,
+    androidAppUrl: `intent://maps.google.com/?cid=${cid}#Intent;scheme=https;package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(reviewUrl)};end`,
     fallbackUrl: reviewUrl,
     mapsUrl,
   };

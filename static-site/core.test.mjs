@@ -164,11 +164,11 @@ test("extractGoogleReviewCid decodes Google Business Profile review short links"
 test("buildGoogleMapsLaunchTarget prefers the Google Maps app while keeping review fallback", () => {
   const target = buildGoogleMapsLaunchTarget("https://g.page/r/CV4dH4Ir7AXnEBI/review");
 
-  assert.equal(target.appUrl, "comgooglemapsurl://www.google.com/maps?cid=16646971269255732574");
-  assert.match(target.androidAppUrl, /^intent:\/\/www\.google\.com\/maps\?cid=16646971269255732574#Intent/);
+  assert.equal(target.appUrl, "comgooglemapsurl://maps.google.com/?cid=16646971269255732574");
+  assert.match(target.androidAppUrl, /^intent:\/\/maps\.google\.com\/\?cid=16646971269255732574#Intent/);
   assert.match(target.androidAppUrl, /package=com\.google\.android\.apps\.maps/);
   assert.equal(target.fallbackUrl, "https://g.page/r/CV4dH4Ir7AXnEBI/review");
-  assert.equal(target.mapsUrl, "https://www.google.com/maps?cid=16646971269255732574");
+  assert.equal(target.mapsUrl, "https://maps.google.com/?cid=16646971269255732574");
 });
 
 test("buildPlatformLaunchTarget opens known app compose surfaces without web auto fallback", () => {
@@ -187,7 +187,7 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(tiktok.appUrl, "tiktok://");
   assert.equal(tiktok.fallbackUrl, "https://www.tiktok.com/");
   assert.equal(tiktok.autoFallback, false);
-  assert.equal(google.appUrl, "comgooglemapsurl://www.google.com/maps?cid=16646971269255732574");
+  assert.equal(google.appUrl, "comgooglemapsurl://maps.google.com/?cid=16646971269255732574");
   assert.match(google.androidAppUrl, /package=com\.google\.android\.apps\.maps/);
   assert.equal(google.fallbackUrl, "https://g.page/r/CV4dH4Ir7AXnEBI/review");
   assert.equal(google.prefersSameTab, true);
