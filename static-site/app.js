@@ -6,15 +6,14 @@ import {
   buildPlatformLaunchTarget,
   buildTrialMessage,
   editablePlatformSettings,
+  isGoogleEmailUser,
   isPendingShareState,
-  isPhoneVerifiedUser,
   isRewardActionLink,
   isWeChatBrowser,
   normalizeLotteryDrawResult,
-  normalizePhoneForOtp,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-admin-qr-current";
+} from "./core.mjs?v=20260607-google-email-lottery";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -24,7 +23,7 @@ const configuredPublicSiteUrl = normalizePublicSiteUrl(config.PUBLIC_SITE_URL);
 const appOrigin =
   configuredPublicSiteUrl ||
   window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
-const customerPageVersion = "20260607-admin-qr-current";
+const customerPageVersion = "20260607-google-email-lottery";
 const pendingShareStorageKey = "typecard.pendingShare.v1";
 let customerReturnCleanup = null;
 const supabase =
@@ -95,14 +94,25 @@ function navigate(route) {
 }
 
 function buildCustomerPageUrl(cardId) {
-  return addVersionToAppUrl(buildAppUrl(appOrigin, basePath, `/c/${cardId}`), customerPageVersion);
+  return addQueryParamsToAppUrl(buildAppUrl(appOrigin, basePath, `/c/${cardId}`), {
+    v: customerPageVersion,
+  });
 }
 
-function addVersionToAppUrl(url, version) {
+function buildCustomerAuthRedirectUrl(cardId) {
+  return addQueryParamsToAppUrl(buildAppUrl(appOrigin, basePath, `/c/${cardId}`), {
+    v: customerPageVersion,
+    card: cardId,
+  });
+}
+
+function addQueryParamsToAppUrl(url, params) {
   const [beforeHash, hash = ""] = String(url).split("#");
-  const separator = beforeHash.includes("?") ? "&" : "?";
-  const versionedUrl = `${beforeHash}${separator}v=${encodeURIComponent(version)}`;
-  return hash ? `${versionedUrl}#${hash}` : versionedUrl;
+  const nextUrl = new URL(beforeHash, window.location.href);
+  for (const [key, value] of Object.entries(params)) {
+    nextUrl.searchParams.set(key, value);
+  }
+  return hash ? `${nextUrl.toString()}#${hash}` : nextUrl.toString();
 }
 
 function isSupabaseAuthCallbackHash(hash) {
@@ -110,7 +120,7 @@ function isSupabaseAuthCallbackHash(hash) {
 }
 
 function cleanupAuthCallbackUrl(cardId) {
-  const query = new URLSearchParams({ card: cardId });
+  const query = new URLSearchParams({ v: customerPageVersion, card: cardId });
   window.history.replaceState({}, document.title, `${window.location.pathname}?${query.toString()}#/c/${encodeURIComponent(cardId)}`);
 }
 
@@ -353,8 +363,8 @@ function showTaskCompleteModal(action) {
   modal.innerHTML = `
     <div class="modal-card">
       <h2>恭喜，任务完成</h2>
-      <p class="status-ok">我们检测到你已经回到页面。验证手机号后即可参与抽奖。</p>
-      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">验证手机号去抽奖</button>
+      <p class="status-ok">我们检测到你已经回到页面。使用 Google 邮箱登录后即可参与抽奖。</p>
+      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">用 Google 邮箱登录去抽奖</button>
     </div>
   `;
   document.body.append(modal);
@@ -369,11 +379,11 @@ async function beginLotteryFlow(action, modal) {
 
   try {
     const { data } = await supabase.auth.getUser();
-    if (isPhoneVerifiedUser(data.user)) {
+    if (isGoogleEmailUser(data.user)) {
       await showLotteryStep(action, modal);
       return;
     }
-    showPhoneVerificationStep(action, modal);
+    showGoogleEmailVerificationStep(action, modal);
   } catch (error) {
     showInlineModalError(modal, error.message || "抽奖准备失败，请再试一次。");
   }
@@ -381,8 +391,8 @@ async function beginLotteryFlow(action, modal) {
 
 async function showLotteryStep(action, modal) {
   const { data } = await supabase.auth.getUser();
-  if (!isPhoneVerifiedUser(data.user)) {
-    showPhoneVerificationStep(action, modal);
+  if (!isGoogleEmailUser(data.user)) {
+    showGoogleEmailVerificationStep(action, modal);
     return;
   }
 
@@ -401,7 +411,7 @@ async function showLotteryStep(action, modal) {
   const prizes = await loadLotteryPrizes(action.card.merchant_id);
   modal.querySelector(".modal-card").innerHTML = `
     <h2>开始抽奖</h2>
-    <p class="muted">同一个手机号只能参与一次。奖品按后台设置的概率和库存抽取。</p>
+    <p class="muted">同一个 Google 邮箱只能参与一次。奖品按后台设置的概率和库存抽取。</p>
     <div class="lottery-grid">
       ${prizes.map(renderLotteryPrize).join("")}
     </div>
@@ -423,81 +433,33 @@ async function showLotteryStep(action, modal) {
   });
 }
 
-function showPhoneVerificationStep(action, modal) {
+function showGoogleEmailVerificationStep(action, modal) {
   modal.querySelector(".modal-card").innerHTML = `
-    <h2>验证手机号</h2>
-    <p class="muted">为了保证每位顾客只参与一次活动，请先验证手机号。当前支持新加坡手机号。</p>
-    <form data-phone-form class="grid">
-      <label class="field">手机号
-        <input class="input" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="例如 9123 4567" required />
-      </label>
-      <button class="btn">发送验证码</button>
-    </form>
-    <p class="muted" style="font-size:13px">验证码由 Supabase 短信服务发送；正式上线前需要配置 SMS Provider。</p>
+    <h2>使用 Google 邮箱验证</h2>
+    <p class="muted">为了保证每位顾客只参与一次活动，请先用 Google 邮箱登录。登录完成后会自动回到这个扫码页继续抽奖。</p>
+    <button class="btn" data-google-login style="width:100%; margin-top:12px">继续使用 Google</button>
+    <button class="btn secondary" data-close style="width:100%; margin-top:10px">稍后再抽奖</button>
   `;
 
-  modal.querySelector("[data-phone-form]").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const phone = normalizePhoneForOtp(form.get("phone"));
-    const button = event.currentTarget.querySelector("button");
-    if (!phone) {
-      showInlineModalError(modal, "请输入有效的新加坡手机号，例如 9123 4567。");
-      return;
-    }
-
+  modal.querySelector("[data-google-login]").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
     button.disabled = true;
-    button.textContent = "发送中...";
-    const { error } = await supabase.auth.signInWithOtp({ phone });
+    button.textContent = "正在打开 Google...";
+    savePendingShare(action.card.id, action.link.id);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: buildCustomerAuthRedirectUrl(action.card.id),
+      },
+    });
     if (error) {
       button.disabled = false;
-      button.textContent = "发送验证码";
-      showInlineModalError(modal, `验证码发送失败：${error.message}`);
-      return;
+      button.textContent = "继续使用 Google";
+      showInlineModalError(modal, `Google 登录打开失败：${error.message}`);
     }
-
-    showPhoneOtpCodeStep(action, modal, phone);
-  });
-}
-
-function showPhoneOtpCodeStep(action, modal, phone) {
-  modal.querySelector(".modal-card").innerHTML = `
-    <h2>输入验证码</h2>
-    <p class="status-ok">验证码已发送到 ${escapeHtml(phone)}。</p>
-    <form data-otp-form class="grid">
-      <label class="field">短信验证码
-        <input class="input" name="token" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位验证码" required />
-      </label>
-      <button class="btn">验证并继续抽奖</button>
-    </form>
-    <button class="btn secondary" data-change-phone style="width:100%; margin-top:10px">换手机号</button>
-  `;
-
-  modal.querySelector("[data-otp-form]").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const token = String(new FormData(event.currentTarget).get("token") || "").trim();
-    const button = event.currentTarget.querySelector("button");
-    if (!token) {
-      showInlineModalError(modal, "请输入短信验证码。");
-      return;
-    }
-
-    button.disabled = true;
-    button.textContent = "验证中...";
-    const { error } = await supabase.auth.verifyOtp({ phone, token, type: "sms" });
-    if (error) {
-      button.disabled = false;
-      button.textContent = "验证并继续抽奖";
-      showInlineModalError(modal, `验证码不正确或已过期：${error.message}`);
-      return;
-    }
-
-    await showLotteryStep(action, modal);
   });
 
-  modal.querySelector("[data-change-phone]").addEventListener("click", () => {
-    showPhoneVerificationStep(action, modal);
-  });
+  modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
 }
 
 function renderLotteryPrize(prize) {
