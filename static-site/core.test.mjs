@@ -6,6 +6,7 @@ import {
   buildClaimRoute,
   normalizeClaimResult,
   normalizeLotteryDrawResult,
+  normalizePhoneForOtp,
   buildNfcInstruction,
   buildPendingShareState,
   buildPlatformLaunchTarget,
@@ -15,6 +16,7 @@ import {
   extractGoogleReviewCid,
   getStoredParticipantToken,
   isPendingShareState,
+  isPhoneVerifiedUser,
   isRewardActionLink,
   isWeChatBrowser,
   editablePlatformSettings,
@@ -121,6 +123,19 @@ test("getStoredParticipantToken reuses a local token per card", () => {
   assert.equal(getStoredParticipantToken(localStorage, "table-a01", generator), "token-1");
   assert.equal(getStoredParticipantToken(localStorage, "table-a01", generator), "token-1");
   assert.equal(getStoredParticipantToken(localStorage, "table-b02", generator), "token-2");
+});
+
+test("normalizePhoneForOtp converts Singapore phone inputs to E.164", () => {
+  assert.equal(normalizePhoneForOtp("9123 4567"), "+6591234567");
+  assert.equal(normalizePhoneForOtp("65 9123 4567"), "+6591234567");
+  assert.equal(normalizePhoneForOtp("+65 9123 4567"), "+6591234567");
+  assert.equal(normalizePhoneForOtp("123"), "");
+});
+
+test("isPhoneVerifiedUser only accepts authenticated users with phone numbers", () => {
+  assert.equal(isPhoneVerifiedUser(null), false);
+  assert.equal(isPhoneVerifiedUser({ email: "owner@example.com" }), false);
+  assert.equal(isPhoneVerifiedUser({ phone: "+6591234567" }), true);
 });
 
 test("editablePlatformSettings exposes every customer platform for settings", () => {

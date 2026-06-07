@@ -6,14 +6,15 @@ import {
   buildPlatformLaunchTarget,
   buildTrialMessage,
   editablePlatformSettings,
-  getStoredParticipantToken,
   isPendingShareState,
+  isPhoneVerifiedUser,
   isRewardActionLink,
   isWeChatBrowser,
   normalizeLotteryDrawResult,
+  normalizePhoneForOtp,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-prize-percentages";
+} from "./core.mjs?v=20260607-phone-otp-lottery";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -340,8 +341,8 @@ function showTaskCompleteModal(action) {
   modal.innerHTML = `
     <div class="modal-card">
       <h2>恭喜，任务完成</h2>
-      <p class="status-ok">我们检测到你已经回到页面。现在可以直接参与抽奖。</p>
-      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">立即抽奖</button>
+      <p class="status-ok">我们检测到你已经回到页面。验证手机号后即可参与抽奖。</p>
+      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">验证手机号去抽奖</button>
     </div>
   `;
   document.body.append(modal);
@@ -355,15 +356,25 @@ async function beginLotteryFlow(action, modal) {
   `;
 
   try {
-    await showLotteryStep(action, modal);
+    const { data } = await supabase.auth.getUser();
+    if (isPhoneVerifiedUser(data.user)) {
+      await showLotteryStep(action, modal);
+      return;
+    }
+    showPhoneVerificationStep(action, modal);
   } catch (error) {
     showInlineModalError(modal, error.message || "抽奖准备失败，请再试一次。");
   }
 }
 
 async function showLotteryStep(action, modal) {
-  const participantToken = getLotteryParticipantToken(action.card.id);
-  const status = await getLotteryStatus(action.card.id, participantToken);
+  const { data } = await supabase.auth.getUser();
+  if (!isPhoneVerifiedUser(data.user)) {
+    showPhoneVerificationStep(action, modal);
+    return;
+  }
+
+  const status = await getLotteryStatus(action.card.id);
   if (status?.has_drawn) {
     clearPendingShare();
     showPrizeResult(modal, {
@@ -378,7 +389,7 @@ async function showLotteryStep(action, modal) {
   const prizes = await loadLotteryPrizes(action.card.merchant_id);
   modal.querySelector(".modal-card").innerHTML = `
     <h2>开始抽奖</h2>
-    <p class="muted">每台手机浏览器默认只能参与一次。奖品先用占位，后续按你的库存和概率替换。</p>
+    <p class="muted">同一个手机号只能参与一次。奖品按后台设置的概率和库存抽取。</p>
     <div class="lottery-grid">
       ${prizes.map(renderLotteryPrize).join("")}
     </div>
@@ -389,7 +400,7 @@ async function showLotteryStep(action, modal) {
     button.disabled = true;
     button.textContent = "抽奖中...";
     try {
-      const draw = await drawLottery(action.card.id, action.link.id, participantToken);
+      const draw = await drawLottery(action.card.id, action.link.id);
       clearPendingShare();
       showPrizeResult(modal, draw);
     } catch (error) {
@@ -397,6 +408,83 @@ async function showLotteryStep(action, modal) {
       button.textContent = "立即抽奖";
       showInlineModalError(modal, error.message || "抽奖失败，请再试一次。");
     }
+  });
+}
+
+function showPhoneVerificationStep(action, modal) {
+  modal.querySelector(".modal-card").innerHTML = `
+    <h2>验证手机号</h2>
+    <p class="muted">为了保证每位顾客只参与一次活动，请先验证手机号。当前支持新加坡手机号。</p>
+    <form data-phone-form class="grid">
+      <label class="field">手机号
+        <input class="input" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="例如 9123 4567" required />
+      </label>
+      <button class="btn">发送验证码</button>
+    </form>
+    <p class="muted" style="font-size:13px">验证码由 Supabase 短信服务发送；正式上线前需要配置 SMS Provider。</p>
+  `;
+
+  modal.querySelector("[data-phone-form]").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const phone = normalizePhoneForOtp(form.get("phone"));
+    const button = event.currentTarget.querySelector("button");
+    if (!phone) {
+      showInlineModalError(modal, "请输入有效的新加坡手机号，例如 9123 4567。");
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "发送中...";
+    const { error } = await supabase.auth.signInWithOtp({ phone });
+    if (error) {
+      button.disabled = false;
+      button.textContent = "发送验证码";
+      showInlineModalError(modal, `验证码发送失败：${error.message}`);
+      return;
+    }
+
+    showPhoneOtpCodeStep(action, modal, phone);
+  });
+}
+
+function showPhoneOtpCodeStep(action, modal, phone) {
+  modal.querySelector(".modal-card").innerHTML = `
+    <h2>输入验证码</h2>
+    <p class="status-ok">验证码已发送到 ${escapeHtml(phone)}。</p>
+    <form data-otp-form class="grid">
+      <label class="field">短信验证码
+        <input class="input" name="token" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位验证码" required />
+      </label>
+      <button class="btn">验证并继续抽奖</button>
+    </form>
+    <button class="btn secondary" data-change-phone style="width:100%; margin-top:10px">换手机号</button>
+  `;
+
+  modal.querySelector("[data-otp-form]").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const token = String(new FormData(event.currentTarget).get("token") || "").trim();
+    const button = event.currentTarget.querySelector("button");
+    if (!token) {
+      showInlineModalError(modal, "请输入短信验证码。");
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "验证中...";
+    const { error } = await supabase.auth.verifyOtp({ phone, token, type: "sms" });
+    if (error) {
+      button.disabled = false;
+      button.textContent = "验证并继续抽奖";
+      showInlineModalError(modal, `验证码不正确或已过期：${error.message}`);
+      return;
+    }
+
+    await showLotteryStep(action, modal);
+  });
+
+  modal.querySelector("[data-change-phone]").addEventListener("click", () => {
+    showPhoneVerificationStep(action, modal);
   });
 }
 
@@ -419,17 +507,6 @@ function showPrizeResult(modal, draw) {
     <button class="btn secondary" data-close style="width:100%; margin-top:12px">我已截图</button>
   `;
   modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
-}
-
-function buildCustomerAuthRedirectUrl(cardId) {
-  return `${appOrigin}/?card=${encodeURIComponent(cardId)}`;
-}
-
-function getLotteryParticipantToken(cardId) {
-  return getStoredParticipantToken(window.localStorage, cardId, () => {
-    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-    return `participant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  });
 }
 
 function normalizePublicSiteUrl(url) {
@@ -629,10 +706,10 @@ async function recordClick(card, linkId) {
   });
 }
 
-async function getLotteryStatus(cardId, participantToken) {
+async function getLotteryStatus(cardId, participantToken = null) {
   const { data, error } = await supabase.rpc("get_lottery_status_public", {
     p_card_id: cardId,
-    p_participant_token: participantToken,
+    p_participant_token: participantToken ?? null,
   });
   if (error) throw error;
   return Array.isArray(data) ? data[0] : data;
@@ -656,11 +733,11 @@ async function loadLotteryPrizes(merchantId) {
       ];
 }
 
-async function drawLottery(cardId, linkId, participantToken) {
+async function drawLottery(cardId, linkId, participantToken = null) {
   const { data, error } = await supabase.rpc("draw_lottery_public", {
     p_card_id: cardId,
     p_task_link_id: linkId,
-    p_participant_token: participantToken,
+    p_participant_token: participantToken ?? null,
   });
   if (error) throw error;
   const draw = normalizeLotteryDrawResult(data);

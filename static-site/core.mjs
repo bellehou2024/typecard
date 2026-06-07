@@ -222,6 +222,32 @@ export function getStoredParticipantToken(storage, cardId, generateToken) {
   return token;
 }
 
+export function normalizePhoneForOtp(phone, defaultCountryCode = "+65") {
+  const raw = String(phone || "").trim();
+  if (!raw) return "";
+
+  const digits = raw.replace(/[^\d+]/g, "");
+  if (digits.startsWith("+")) {
+    const normalized = `+${digits.replace(/[^\d]/g, "")}`;
+    return /^\+\d{8,15}$/.test(normalized) ? normalized : "";
+  }
+
+  const numeric = digits.replace(/\D/g, "");
+  const countryDigits = String(defaultCountryCode).replace(/\D/g, "");
+  if (numeric.startsWith(countryDigits) && numeric.length > countryDigits.length) {
+    return `+${numeric}`;
+  }
+  if (numeric.length === 8) {
+    return `${defaultCountryCode}${numeric}`;
+  }
+
+  return "";
+}
+
+export function isPhoneVerifiedUser(user) {
+  return Boolean(user?.phone && normalizePhoneForOtp(user.phone));
+}
+
 export function buildTrialMessage({
   appOrigin,
   basePath = "",
