@@ -140,7 +140,7 @@ begin
   values
     ('rednote', 'table-a01', v_merchant, '小红书发布探店笔记', '小红书', 'share', 'https://creator.xiaohongshu.com/publish/publish?from=typecard&target=article', true, '#ff2442', 10),
     ('tiktok', 'table-a01', v_merchant, '发布 TikTok 探店视频', 'TikTok', 'share', 'https://www.tiktok.com/', true, '#111827', 20),
-    ('google', 'table-a01', v_merchant, 'Google 留下真实评价', 'Google', 'review', 'https://g.page/r/CV4dH4Ir7AXnEBI/review', true, '#4285f4', 30),
+    ('google', 'table-a01', v_merchant, 'Google 留下真实评价', 'Google', 'review', 'https://g.page/r/CV4dH4lr7AXnEAE/review', true, '#4285f4', 30),
     ('facebook', 'table-a01', v_merchant, '关注 Facebook', 'Facebook', 'follow', 'https://www.facebook.com/', false, '#1877f2', 40),
     ('instagram', 'table-a01', v_merchant, '关注 Instagram', 'Instagram', 'follow', 'https://www.instagram.com/', true, '#d946ef', 50),
     ('whatsapp', 'table-a01', v_merchant, 'WhatsApp 咨询报价', 'WhatsApp', 'follow', 'https://wa.me/', false, '#22c55e', 60)
