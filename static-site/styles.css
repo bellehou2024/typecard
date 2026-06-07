@@ -112,6 +112,10 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .grid.cols-4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -141,21 +145,45 @@ textarea {
 .settings-section {
   display: grid;
   gap: 14px;
-  border-top: 1px solid #eee7df;
-  padding-top: 18px;
 }
 
 .settings-section h2 {
   margin: 0;
 }
 
-.platform-setting {
+.settings-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.platform-setting,
+.prize-setting {
   display: grid;
   gap: 12px;
   border: 1px solid #eee7df;
   border-radius: 8px;
   background: #fffaf4;
   padding: 14px;
+}
+
+.prize-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-save-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border: 1px solid #ded6cc;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 94%);
+  padding: 12px;
+  box-shadow: 0 12px 28px rgb(31 35 40 / 10%);
 }
 
 .platform-setting-head,
@@ -188,6 +216,66 @@ textarea {
 .table th {
   background: #fffaf4;
   color: #6d6258;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dashboard-card {
+  display: grid;
+  gap: 8px;
+  min-height: 170px;
+  border: 1px solid #ded6cc;
+  border-radius: 8px;
+  background: #fff;
+  padding: 16px;
+  text-decoration: none;
+  box-shadow: 0 8px 22px rgb(31 35 40 / 7%);
+}
+
+.dashboard-card span {
+  color: #6d6258;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dashboard-card strong {
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.dashboard-card p {
+  margin: 0;
+  color: #6d6258;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.dashboard-card em {
+  align-self: end;
+  color: #111827;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.dashboard-link-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-link-panel h2 {
+  margin: 0 0 6px;
+}
+
+.redeem-backup-panel {
+  margin-top: 16px;
+  opacity: 0.9;
 }
 
 .hero {
@@ -482,8 +570,19 @@ textarea {
   }
 
   .grid.cols-2,
+  .grid.cols-3,
   .grid.cols-4 {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid,
+  .prize-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-link-panel {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .header {

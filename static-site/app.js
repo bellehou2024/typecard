@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-four-platforms";
+} from "./core.mjs?v=20260607-admin-workbench";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -736,7 +736,14 @@ async function requireOwnerBundle() {
     .single();
   if (error) throw error;
 
-  const [{ data: stores }, { data: cards }, { data: rewards }, { data: claims }] =
+  const [
+    { data: stores },
+    { data: cards },
+    { data: rewards },
+    { data: claims },
+    { data: lotteryPrizes },
+    { data: lotteryDraws },
+  ] =
     await Promise.all([
       supabase.from("stores").select("*").eq("merchant_id", merchant.id),
       supabase.from("tap_cards").select("*").eq("merchant_id", merchant.id),
@@ -746,6 +753,17 @@ async function requireOwnerBundle() {
         .select("*")
         .eq("merchant_id", merchant.id)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("lottery_prizes")
+        .select("*")
+        .eq("merchant_id", merchant.id)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("lottery_draws")
+        .select("*")
+        .eq("merchant_id", merchant.id)
+        .order("created_at", { ascending: false })
+        .limit(50),
     ]);
   const card = cards?.[0];
   const { data: links, error: linksError } = card
@@ -765,39 +783,66 @@ async function requireOwnerBundle() {
     links: links ?? [],
     reward: rewards?.[0],
     claims: claims ?? [],
+    lotteryPrizes: lotteryPrizes ?? [],
+    lotteryDraws: lotteryDraws ?? [],
   };
 }
 
 async function renderDashboard() {
   const bundle = await requireOwnerBundle();
   const card = bundle.cards[0];
+  const cardId = card?.id || defaultCardId;
+  const enabledLinks = bundle.links.filter((link) => link.enabled);
+  const availablePrizes = bundle.lotteryPrizes.filter((prize) => prize.enabled && Number(prize.stock_remaining) > 0);
+  const customerUrl = buildAppUrl(appOrigin, basePath, `/c/${cardId}`);
   app.innerHTML = `
     <main class="shell">
       <section class="wrap">
         <header class="header panel">
           <div>
-            <p class="muted">TypeCard 本店管理</p>
+            <p class="muted">TypeCard 店主管理台</p>
             <h1>${escapeHtml(bundle.merchant.name)}</h1>
             <p class="muted">${escapeHtml(bundle.store?.name || "")} · ${escapeHtml(bundle.store?.address || "")}</p>
           </div>
           <div class="header-actions">
-            <a class="link-btn" href="#/settings">店铺设置</a>
-            <a class="link-btn secondary" href="#/trial-kit">朋友试用包</a>
-            <a class="link-btn secondary" href="#/print/${escapeAttr(card?.id || defaultCardId)}">打印卡片</a>
+            <a class="link-btn" href="#/settings">管理设置</a>
+            <a class="link-btn secondary" href="#/print/${escapeAttr(cardId)}">二维码/NFC</a>
             <button class="btn secondary" id="logout">退出</button>
           </div>
         </header>
-        <section class="panel">
-          <h2>线下福利核销</h2>
+
+        <section class="dashboard-grid">
+          ${renderDashboardCard("店铺内容", bundle.store?.name || "未设置店铺", "修改店名、地址和店铺介绍", "#/settings", "去设置")}
+          ${renderDashboardCard("四个平台", `${enabledLinks.length} 个入口已显示`, enabledLinks.map((link) => link.platform).join(" · "), "#/settings", "管理平台")}
+          ${renderDashboardCard("奖品/抽奖", `${availablePrizes.length} 个奖品可抽`, "设置奖品名称、说明、库存和权重", "#/settings", "管理奖品")}
+          ${renderDashboardCard("二维码/NFC", "扫码页已生成", "打印二维码，或把链接写入 NFC 卡片", `#/print/${escapeAttr(cardId)}`, "打开卡片")}
+        </section>
+
+        <section class="panel dashboard-link-panel">
+          <div>
+            <h2>顾客扫码链接</h2>
+            <p class="muted">${escapeHtml(customerUrl)}</p>
+          </div>
+          <div class="header-actions">
+            <a class="link-btn secondary" href="#/c/${escapeAttr(cardId)}">预览顾客页</a>
+            <a class="link-btn secondary" href="#/trial-kit">测试链接</a>
+          </div>
+        </section>
+
+        <section class="panel" style="margin-top:16px">
+          <h2>抽奖/领取记录</h2>
+          <p class="muted">顾客完成平台任务后抽奖，到店出示截图时，店员用这里核对奖品。</p>
+          ${renderLotteryDrawsTable(bundle.lotteryDraws)}
+        </section>
+
+        <section class="panel redeem-backup-panel">
+          <h2>福利码核销备用</h2>
+          <p class="muted">旧版福利码流程保留备用；当前主流程以顾客截图为准。</p>
           <form id="redeem-form" class="grid cols-2">
             <input class="input" name="code" placeholder="输入福利码，例如 TC-ABC123" required />
             <button class="btn">立即核销</button>
           </form>
           <p id="redeem-result"></p>
-        </section>
-        <section class="panel" style="margin-top:16px">
-          <h2>福利领取记录</h2>
-          ${renderClaimsTable(bundle.claims)}
         </section>
       </section>
     </main>
@@ -821,6 +866,17 @@ async function renderDashboard() {
     result.textContent = "核销成功，后台记录已更新。";
     await renderDashboard();
   });
+}
+
+function renderDashboardCard(title, value, description, href, cta) {
+  return `
+    <a class="dashboard-card" href="${escapeAttr(href)}">
+      <span>${escapeHtml(title)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <p>${escapeHtml(description || "")}</p>
+      <em>${escapeHtml(cta)}</em>
+    </a>
+  `;
 }
 
 function renderClaimsTable(claims) {
@@ -849,40 +905,91 @@ function renderClaimsTable(claims) {
   `;
 }
 
+function renderLotteryDrawsTable(draws) {
+  if (!draws.length) {
+    return `<p class="muted">暂无抽奖记录。顾客完成任务并抽奖后会显示在这里。</p>`;
+  }
+
+  return `
+    <table class="table">
+      <thead><tr><th>奖品</th><th>任务平台</th><th>状态</th><th>时间</th></tr></thead>
+      <tbody>
+        ${draws
+          .map(
+            (draw) => `
+              <tr>
+                <td><strong>${escapeHtml(draw.prize_name || "未开奖")}</strong><br><span class="muted">${escapeHtml(draw.prize_description || "")}</span></td>
+                <td>${escapeHtml(draw.task_link_id || "未记录")}</td>
+                <td>${escapeHtml(draw.status || "pending")}</td>
+                <td>${new Date(draw.created_at).toLocaleString()}</td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
 async function renderSettings() {
   const bundle = await requireOwnerBundle();
   const reward = bundle.reward;
   const linksById = Object.fromEntries(bundle.links.map((link) => [link.id, link]));
   app.innerHTML = `
     <main class="shell">
-      <section class="wrap panel">
-        <div class="header">
+      <section class="wrap">
+        <div class="header panel">
           <div>
             <a href="#/dashboard">返回后台</a>
-            <h1>店铺设置</h1>
+            <h1>管理设置</h1>
+            <p class="muted">店铺资料、四个平台、发布文案和奖品都在这里维护。</p>
           </div>
+          <button class="btn" form="settings-form">保存全部设置</button>
         </div>
-        <form id="settings-form" class="grid">
-          <label class="field">店铺名称 <input class="input" name="merchantName" value="${escapeAttr(bundle.merchant.name)}" required /></label>
-          <label class="field">店铺简介 <input class="input" name="tagline" value="${escapeAttr(bundle.merchant.tagline)}" required /></label>
-          <label class="field">福利标题 <input class="input" name="rewardTitle" value="${escapeAttr(reward?.title || "")}" required /></label>
-          <label class="field">领取说明 <textarea class="textarea" name="rewardDescription">${escapeHtml(reward?.description || "")}</textarea></label>
-          <section class="settings-section">
-            <h2>平台入口</h2>
-            <p class="muted">这里控制顾客页出现哪些平台，以及每个平台点开后去哪里。</p>
+
+        <form id="settings-form" class="settings-layout">
+          <section class="panel settings-section">
+            <h2>店铺资料</h2>
+            <p class="muted">这些内容会显示在顾客扫码页、打印卡片和 Google Maps 搜索里。</p>
+            <div class="grid cols-2">
+              <label class="field">店铺名称 <input class="input" name="merchantName" value="${escapeAttr(bundle.merchant.name)}" required /></label>
+              <label class="field">门店名称 <input class="input" name="storeName" value="${escapeAttr(bundle.store?.name || "")}" required /></label>
+            </div>
+            <label class="field">店铺地址 <input class="input" name="storeAddress" value="${escapeAttr(bundle.store?.address || "")}" required /></label>
+            <label class="field">店铺简介 <textarea class="textarea" name="tagline">${escapeHtml(bundle.merchant.tagline)}</textarea></label>
+          </section>
+
+          <section class="panel settings-section">
+            <h2>四个平台入口</h2>
+            <p class="muted">顾客扫码页只显示这里的四个平台：小红书、TikTok、Google 和 Instagram。</p>
             ${editablePlatformSettings
               .map((platform) => renderPlatformLinkSetting(platform, linksById[platform.id]))
               .join("")}
           </section>
-          <section class="settings-section">
-            <h2>平台文案</h2>
+
+          <section class="panel settings-section">
+            <h2>发布文案</h2>
             <p class="muted">发布类平台会自动生成文案；评价/关注类平台可以写给顾客看的提示。</p>
             ${editablePlatformSettings
               .map((platform) => renderPlatformTemplateSetting(platform, reward))
               .join("")}
             <label class="field">默认文案 <textarea class="textarea" name="template-default">${escapeHtml(reward?.publish_templates?.default || "")}</textarea></label>
           </section>
-          <button class="btn">保存设置</button>
+
+          <section class="panel settings-section">
+            <h2>奖品/抽奖</h2>
+            <p class="muted">顾客抽奖后会截图到店领取。库存为 0 的奖品不会被抽中。</p>
+            <label class="field">活动标题 <input class="input" name="rewardTitle" value="${escapeAttr(reward?.title || "")}" required /></label>
+            <label class="field">领取说明 <textarea class="textarea" name="rewardDescription">${escapeHtml(reward?.description || "")}</textarea></label>
+            <div class="prize-settings-grid">
+              ${renderPrizeSettings(bundle.lotteryPrizes)}
+            </div>
+          </section>
+
+          <div class="settings-save-bar">
+            <a class="link-btn secondary" href="#/dashboard">取消</a>
+            <button class="btn">保存全部设置</button>
+          </div>
         </form>
       </section>
     </main>
@@ -914,7 +1021,20 @@ async function renderSettings() {
           .eq("card_id", linksById[platform.id].card_id)
           .eq("id", platform.id),
       );
-    const [{ error: merchantError }, { error: rewardError }, ...linkResults] = await Promise.all([
+    const prizeUpdates = bundle.lotteryPrizes.slice(0, 3).map((prize) =>
+      supabase
+        .from("lottery_prizes")
+        .update({
+          name: String(form.get(`prize-${prize.id}-name`) || prize.name),
+          description: String(form.get(`prize-${prize.id}-description`) || prize.description),
+          stock_total: Number(form.get(`prize-${prize.id}-stock-total`) || prize.stock_total || 0),
+          stock_remaining: Number(form.get(`prize-${prize.id}-stock-remaining`) || prize.stock_remaining || 0),
+          probability_weight: Number(form.get(`prize-${prize.id}-weight`) || prize.probability_weight || 1),
+          enabled: form.has(`prize-${prize.id}-enabled`),
+        })
+        .eq("id", prize.id),
+    );
+    const [{ error: merchantError }, { error: storeError }, { error: rewardError }, ...updateResults] = await Promise.all([
       supabase
         .from("merchants")
         .update({
@@ -922,6 +1042,13 @@ async function renderSettings() {
           tagline: String(form.get("tagline")),
         })
         .eq("id", bundle.merchant.id),
+      supabase
+        .from("stores")
+        .update({
+          name: String(form.get("storeName")),
+          address: String(form.get("storeAddress")),
+        })
+        .eq("id", bundle.store.id),
       supabase
         .from("rewards")
         .update({
@@ -931,13 +1058,15 @@ async function renderSettings() {
         })
         .eq("id", reward.id),
       ...linkUpdates,
+      ...prizeUpdates,
     ]);
-    const linkError = linkResults.find((result) => result.error)?.error;
-    if (merchantError || rewardError || linkError) {
-      alert(merchantError?.message || rewardError?.message || linkError?.message);
+    const updateError = updateResults.find((result) => result.error)?.error;
+    if (merchantError || storeError || rewardError || updateError) {
+      alert(merchantError?.message || storeError?.message || rewardError?.message || updateError?.message);
       return;
     }
     alert("已保存");
+    await renderSettings();
   });
 }
 
@@ -966,6 +1095,36 @@ function renderPlatformTemplateSetting(platform, reward) {
   `;
 }
 
+function renderPrizeSettings(prizes) {
+  if (!prizes.length) {
+    return `<p class="muted">还没有奖品数据。请先运行抽奖奖品初始化 SQL。</p>`;
+  }
+
+  return prizes
+    .slice(0, 3)
+    .map(
+      (prize, index) => `
+        <div class="prize-setting">
+          <div class="platform-setting-head">
+            <strong>奖品 ${index + 1}</strong>
+            <label class="toggle-field">
+              <input type="checkbox" name="prize-${escapeAttr(prize.id)}-enabled" ${prize.enabled ? "checked" : ""} />
+              参与抽奖
+            </label>
+          </div>
+          <label class="field">奖品名称 <input class="input" name="prize-${escapeAttr(prize.id)}-name" value="${escapeAttr(prize.name)}" /></label>
+          <label class="field">领取说明 <textarea class="textarea" name="prize-${escapeAttr(prize.id)}-description">${escapeHtml(prize.description || "")}</textarea></label>
+          <div class="grid cols-3">
+            <label class="field">总库存 <input class="input" type="number" min="0" name="prize-${escapeAttr(prize.id)}-stock-total" value="${escapeAttr(prize.stock_total)}" /></label>
+            <label class="field">剩余库存 <input class="input" type="number" min="0" name="prize-${escapeAttr(prize.id)}-stock-remaining" value="${escapeAttr(prize.stock_remaining)}" /></label>
+            <label class="field">中奖权重 <input class="input" type="number" min="1" name="prize-${escapeAttr(prize.id)}-weight" value="${escapeAttr(prize.probability_weight)}" /></label>
+          </div>
+        </div>
+      `,
+    )
+    .join("");
+}
+
 async function renderTrialKit() {
   const bundle = await requireOwnerBundle();
   const cardId = bundle.cards[0]?.id || defaultCardId;
@@ -984,10 +1143,10 @@ async function renderTrialKit() {
         <div class="header">
           <div>
             <a href="#/dashboard">返回后台</a>
-            <h1>朋友试用包</h1>
-            <p class="muted">复制下面这段发给朋友。</p>
+            <h1>测试链接</h1>
+            <p class="muted">复制下面这段给店主或测试人员。</p>
           </div>
-          <button class="btn" id="copy-trial">复制给朋友</button>
+          <button class="btn" id="copy-trial">复制测试信息</button>
         </div>
         <pre class="copy-box">${escapeHtml(message)}</pre>
         <label class="field" style="margin-top:14px">手动复制备用 <textarea class="textarea" readonly>${escapeHtml(message)}</textarea></label>
