@@ -146,14 +146,15 @@ test("buildShareLaunchUrl sends publish platforms to direct creator pages", () =
     "https://www.tiktok.com/",
   );
   assert.equal(
-    buildShareLaunchUrl({ id: "google", url: "https://www.google.com/maps" }),
-    "https://www.google.com/maps",
+    buildShareLaunchUrl({ id: "google", url: "https://www.google.com/maps/search/?api=1&query=SG%20Phone%20Trade" }),
+    "https://www.google.com/maps/search/?api=1&query=SG%20Phone%20Trade",
   );
 });
 
 test("buildPlatformLaunchTarget opens known app compose surfaces without web auto fallback", () => {
   const target = buildPlatformLaunchTarget({ id: "rednote", url: "https://www.xiaohongshu.com/" });
   const tiktok = buildPlatformLaunchTarget({ id: "tiktok", url: "https://www.tiktok.com/" });
+  const google = buildPlatformLaunchTarget({ id: "google", url: "https://www.google.com/maps/search/?api=1&query=SG%20Phone%20Trade" });
   const instagram = buildPlatformLaunchTarget({ id: "instagram", url: "https://www.instagram.com/" });
   const facebook = buildPlatformLaunchTarget({ id: "facebook", url: "https://www.facebook.com/" });
 
@@ -165,6 +166,9 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(tiktok.appUrl, "tiktok://");
   assert.equal(tiktok.fallbackUrl, "https://www.tiktok.com/");
   assert.equal(tiktok.autoFallback, false);
+  assert.equal(google.appUrl, "https://www.google.com/maps/search/?api=1&query=SG%20Phone%20Trade");
+  assert.equal(google.prefersSameTab, true);
+  assert.equal(google.autoFallback, false);
   assert.equal(instagram.appUrl, "instagram://camera");
   assert.equal(instagram.autoFallback, false);
   assert.equal(facebook.appUrl, "fb://composer");

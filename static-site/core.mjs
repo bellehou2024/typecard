@@ -93,6 +93,16 @@ export function buildShareLaunchUrl(link) {
 
 export function buildPlatformLaunchTarget(link) {
   const fallbackUrl = buildShareLaunchUrl(link);
+  if (link?.id === "google") {
+    return {
+      url: fallbackUrl,
+      appUrl: fallbackUrl,
+      fallbackUrl,
+      prefersSameTab: true,
+      autoFallback: false,
+    };
+  }
+
   const appLaunchUrls = {
     rednote: "xhsdiscover://post_note/",
     tiktok: "tiktok://",

@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-anon-lottery";
+} from "./core.mjs?v=20260607-google-maps-search";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
