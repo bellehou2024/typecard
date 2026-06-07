@@ -12,7 +12,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260606-auth-callback";
+} from "./core.mjs?v=20260607-tiktok-app";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};

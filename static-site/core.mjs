@@ -85,7 +85,7 @@ export function buildNfcInstruction(customerUrl) {
 export function buildShareLaunchUrl(link) {
   const directPublishUrls = {
     rednote: "https://creator.xiaohongshu.com/publish/publish?from=typecard&target=article",
-    tiktok: "https://www.tiktok.com/upload?lang=en",
+    tiktok: "https://www.tiktok.com/",
   };
 
   return directPublishUrls[link?.id] || link?.url || "#";
@@ -95,6 +95,7 @@ export function buildPlatformLaunchTarget(link) {
   const fallbackUrl = buildShareLaunchUrl(link);
   const appLaunchUrls = {
     rednote: "xhsdiscover://post_note/",
+    tiktok: "tiktok://",
     instagram: "instagram://camera",
     facebook: "fb://composer",
   };
