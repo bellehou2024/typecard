@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-google-email-lottery";
+} from "./core.mjs?v=20260607-google-auth-callback-fix";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -23,7 +23,7 @@ const configuredPublicSiteUrl = normalizePublicSiteUrl(config.PUBLIC_SITE_URL);
 const appOrigin =
   configuredPublicSiteUrl ||
   window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
-const customerPageVersion = "20260607-google-email-lottery";
+const customerPageVersion = "20260607-google-auth-callback-fix";
 const pendingShareStorageKey = "typecard.pendingShare.v1";
 let customerReturnCleanup = null;
 const supabase =
@@ -100,7 +100,8 @@ function buildCustomerPageUrl(cardId) {
 }
 
 function buildCustomerAuthRedirectUrl(cardId) {
-  return addQueryParamsToAppUrl(buildAppUrl(appOrigin, basePath, `/c/${cardId}`), {
+  const callbackBaseUrl = buildAppUrl(appOrigin, basePath, "/").split("#")[0];
+  return addQueryParamsToAppUrl(callbackBaseUrl, {
     v: customerPageVersion,
     card: cardId,
   });
@@ -116,7 +117,7 @@ function addQueryParamsToAppUrl(url, params) {
 }
 
 function isSupabaseAuthCallbackHash(hash) {
-  return /^#(?:access_token|error|error_code)=/.test(String(hash || ""));
+  return /(?:^#|[&#])(?:access_token|error|error_code)=/.test(String(hash || ""));
 }
 
 function cleanupAuthCallbackUrl(cardId) {
@@ -141,16 +142,19 @@ async function loadCustomerBundle(cardId) {
     .from("tap_cards")
     .select("*")
     .eq("id", cardId)
-    .single();
+    .maybeSingle();
   if (cardError) throw cardError;
+  if (!card) throw new Error(`没有找到扫码卡片：${cardId}`);
 
   const [{ data: merchant, error: merchantError }, { data: store, error: storeError }] =
     await Promise.all([
-      supabase.from("merchants").select("*").eq("id", card.merchant_id).single(),
-      supabase.from("stores").select("*").eq("id", card.store_id).single(),
+      supabase.from("merchants").select("*").eq("id", card.merchant_id).maybeSingle(),
+      supabase.from("stores").select("*").eq("id", card.store_id).maybeSingle(),
     ]);
   if (merchantError) throw merchantError;
   if (storeError) throw storeError;
+  if (!merchant) throw new Error(`没有找到商家资料：${card.merchant_id}`);
+  if (!store) throw new Error(`没有找到门店资料：${card.store_id}`);
 
   const [{ data: links, error: linksError }, { data: rewards, error: rewardsError }] =
     await Promise.all([
