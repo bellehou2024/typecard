@@ -147,6 +147,15 @@ export function isPendingShareState(state, cardId) {
   );
 }
 
+export function getStoredParticipantToken(storage, cardId, generateToken) {
+  const key = `typecard.lotteryParticipant.v1.${cardId}`;
+  const existing = storage?.getItem?.(key);
+  if (existing) return existing;
+  const token = generateToken();
+  storage?.setItem?.(key, token);
+  return token;
+}
+
 export function buildTrialMessage({
   appOrigin,
   basePath = "",
@@ -169,7 +178,7 @@ export function buildTrialMessage({
     "1. 顾客扫二维码进入页面。",
     "2. 选择小红书、TikTok、Google、Facebook、Instagram 或 WhatsApp。",
     "3. 发布/评价后回到页面，系统弹出任务完成提示。",
-    "4. 顾客用 Google 登录后参与一次抽奖。",
+    "4. 顾客完成发布/评价后直接抽奖。",
     "5. 中奖后截图，到店凭截图领取奖品。",
   ].join("\n");
 }

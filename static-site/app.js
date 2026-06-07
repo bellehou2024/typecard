@@ -6,13 +6,14 @@ import {
   buildPlatformLaunchTarget,
   buildTrialMessage,
   editablePlatformSettings,
+  getStoredParticipantToken,
   isPendingShareState,
   isRewardActionLink,
   isWeChatBrowser,
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-tiktok-app";
+} from "./core.mjs?v=20260607-anon-lottery";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -290,8 +291,8 @@ function showTaskCompleteModal(action) {
   modal.innerHTML = `
     <div class="modal-card">
       <h2>恭喜，任务完成</h2>
-      <p class="status-ok">我们检测到你已经回到页面。接下来请用 Google 登录，然后参与一次抽奖。</p>
-      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">继续抽奖</button>
+      <p class="status-ok">我们检测到你已经回到页面。现在可以直接参与抽奖。</p>
+      <button class="btn" data-continue-lottery style="width:100%; margin-top:12px">立即抽奖</button>
     </div>
   `;
   document.body.append(modal);
@@ -300,15 +301,9 @@ function showTaskCompleteModal(action) {
 
 async function beginLotteryFlow(action, modal) {
   modal.querySelector(".modal-card").innerHTML = `
-    <h2>正在检查登录状态</h2>
+    <h2>正在准备抽奖</h2>
     <p class="status-ok">请稍等，我们正在准备抽奖。</p>
   `;
-
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!isGoogleSession(sessionData.session)) {
-    showGoogleLoginStep(action, modal);
-    return;
-  }
 
   try {
     await showLotteryStep(action, modal);
@@ -317,34 +312,9 @@ async function beginLotteryFlow(action, modal) {
   }
 }
 
-function showGoogleLoginStep(action, modal) {
-  modal.querySelector(".modal-card").innerHTML = `
-    <h2>请用 Google 登录</h2>
-    <p class="status-ok">登录只是为了限制每个用户只能参与一次活动。</p>
-    <button class="btn" data-google-login style="width:100%; margin-top:12px">使用 Google 登录</button>
-  `;
-  modal.querySelector("[data-google-login]").addEventListener("click", async () => {
-    updatePendingShare(action.card.id, {
-      taskCompletedAt: Date.now(),
-      linkId: action.link.id,
-    });
-    await supabase.auth.signOut();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: buildCustomerAuthRedirectUrl(action.card.id),
-      },
-    });
-    if (error) showInlineModalError(modal, error.message);
-  });
-}
-
-function isGoogleSession(session) {
-  return Boolean(session?.user?.app_metadata?.provider === "google");
-}
-
 async function showLotteryStep(action, modal) {
-  const status = await getLotteryStatus(action.card.id);
+  const participantToken = getLotteryParticipantToken(action.card.id);
+  const status = await getLotteryStatus(action.card.id, participantToken);
   if (status?.has_drawn) {
     clearPendingShare();
     showPrizeResult(modal, {
@@ -359,7 +329,7 @@ async function showLotteryStep(action, modal) {
   const prizes = await loadLotteryPrizes(action.card.merchant_id);
   modal.querySelector(".modal-card").innerHTML = `
     <h2>开始抽奖</h2>
-    <p class="muted">每个 Google 用户只能抽一次。奖品先用占位，后续按你的库存和概率替换。</p>
+    <p class="muted">每台手机浏览器默认只能参与一次。奖品先用占位，后续按你的库存和概率替换。</p>
     <div class="lottery-grid">
       ${prizes.map(renderLotteryPrize).join("")}
     </div>
@@ -370,7 +340,7 @@ async function showLotteryStep(action, modal) {
     button.disabled = true;
     button.textContent = "抽奖中...";
     try {
-      const draw = await drawLottery(action.card.id, action.link.id);
+      const draw = await drawLottery(action.card.id, action.link.id, participantToken);
       clearPendingShare();
       showPrizeResult(modal, draw);
     } catch (error) {
@@ -404,6 +374,13 @@ function showPrizeResult(modal, draw) {
 
 function buildCustomerAuthRedirectUrl(cardId) {
   return `${appOrigin}/?card=${encodeURIComponent(cardId)}`;
+}
+
+function getLotteryParticipantToken(cardId) {
+  return getStoredParticipantToken(window.localStorage, cardId, () => {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return `participant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
 }
 
 function normalizePublicSiteUrl(url) {
@@ -603,9 +580,10 @@ async function recordClick(card, linkId) {
   });
 }
 
-async function getLotteryStatus(cardId) {
+async function getLotteryStatus(cardId, participantToken) {
   const { data, error } = await supabase.rpc("get_lottery_status_public", {
     p_card_id: cardId,
+    p_participant_token: participantToken,
   });
   if (error) throw error;
   return Array.isArray(data) ? data[0] : data;
@@ -629,10 +607,11 @@ async function loadLotteryPrizes(merchantId) {
       ];
 }
 
-async function drawLottery(cardId, linkId) {
+async function drawLottery(cardId, linkId, participantToken) {
   const { data, error } = await supabase.rpc("draw_lottery_public", {
     p_card_id: cardId,
     p_task_link_id: linkId,
+    p_participant_token: participantToken,
   });
   if (error) throw error;
   const draw = normalizeLotteryDrawResult(data);

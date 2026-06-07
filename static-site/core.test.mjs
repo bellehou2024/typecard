@@ -10,6 +10,7 @@ import {
   buildPendingShareState,
   buildPlatformLaunchTarget,
   buildShareLaunchUrl,
+  getStoredParticipantToken,
   isPendingShareState,
   isRewardActionLink,
   isWeChatBrowser,
@@ -101,6 +102,22 @@ test("buildTrialMessage includes customer, admin, print links and credentials", 
   assert.match(message, /https:\/\/belle\.github\.io\/typecard\/#\/print\/table-a01/);
   assert.match(message, /owner@phone\.test/);
   assert.match(message, /demo123/);
+  assert.match(message, /顾客完成发布\/评价后直接抽奖/);
+  assert.doesNotMatch(message, /Google 登录/);
+});
+
+test("getStoredParticipantToken reuses a local token per card", () => {
+  const storage = new Map();
+  const localStorage = {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+  };
+  let counter = 0;
+  const generator = () => `token-${++counter}`;
+
+  assert.equal(getStoredParticipantToken(localStorage, "table-a01", generator), "token-1");
+  assert.equal(getStoredParticipantToken(localStorage, "table-a01", generator), "token-1");
+  assert.equal(getStoredParticipantToken(localStorage, "table-b02", generator), "token-2");
 });
 
 test("editablePlatformSettings exposes every customer platform for settings", () => {
