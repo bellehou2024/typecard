@@ -10,6 +10,8 @@ import {
   buildPendingShareState,
   buildPlatformLaunchTarget,
   buildShareLaunchUrl,
+  buildGoogleMapsLaunchTarget,
+  extractGoogleReviewCid,
   getStoredParticipantToken,
   isPendingShareState,
   isRewardActionLink,
@@ -151,10 +153,28 @@ test("buildShareLaunchUrl sends publish platforms to direct creator pages", () =
   );
 });
 
+test("extractGoogleReviewCid decodes Google Business Profile review short links", () => {
+  assert.equal(
+    extractGoogleReviewCid("https://g.page/r/CV4dH4Ir7AXnEBI/review"),
+    "16646971269255732574",
+  );
+  assert.equal(extractGoogleReviewCid("https://www.google.com/maps?cid=16646971269255732574"), "");
+});
+
+test("buildGoogleMapsLaunchTarget prefers the Google Maps app while keeping review fallback", () => {
+  const target = buildGoogleMapsLaunchTarget("https://g.page/r/CV4dH4Ir7AXnEBI/review");
+
+  assert.equal(target.appUrl, "comgooglemapsurl://www.google.com/maps?cid=16646971269255732574");
+  assert.match(target.androidAppUrl, /^intent:\/\/www\.google\.com\/maps\?cid=16646971269255732574#Intent/);
+  assert.match(target.androidAppUrl, /package=com\.google\.android\.apps\.maps/);
+  assert.equal(target.fallbackUrl, "https://g.page/r/CV4dH4Ir7AXnEBI/review");
+  assert.equal(target.mapsUrl, "https://www.google.com/maps?cid=16646971269255732574");
+});
+
 test("buildPlatformLaunchTarget opens known app compose surfaces without web auto fallback", () => {
   const target = buildPlatformLaunchTarget({ id: "rednote", url: "https://www.xiaohongshu.com/" });
   const tiktok = buildPlatformLaunchTarget({ id: "tiktok", url: "https://www.tiktok.com/" });
-  const google = buildPlatformLaunchTarget({ id: "google", url: "https://www.google.com/maps/search/?api=1&query=SG%20Phone%20Trade" });
+  const google = buildPlatformLaunchTarget({ id: "google", url: "https://g.page/r/CV4dH4Ir7AXnEBI/review" });
   const instagram = buildPlatformLaunchTarget({ id: "instagram", url: "https://www.instagram.com/" });
   const facebook = buildPlatformLaunchTarget({ id: "facebook", url: "https://www.facebook.com/" });
   const whatsapp = buildPlatformLaunchTarget({ id: "whatsapp", url: "https://wa.me/" });
@@ -167,9 +187,11 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(tiktok.appUrl, "tiktok://");
   assert.equal(tiktok.fallbackUrl, "https://www.tiktok.com/");
   assert.equal(tiktok.autoFallback, false);
-  assert.equal(google.appUrl, "https://www.google.com/maps/search/?api=1&query=SG%20Phone%20Trade");
+  assert.equal(google.appUrl, "comgooglemapsurl://www.google.com/maps?cid=16646971269255732574");
+  assert.match(google.androidAppUrl, /package=com\.google\.android\.apps\.maps/);
+  assert.equal(google.fallbackUrl, "https://g.page/r/CV4dH4Ir7AXnEBI/review");
   assert.equal(google.prefersSameTab, true);
-  assert.equal(google.autoFallback, false);
+  assert.equal(google.autoFallback, true);
   assert.equal(instagram.appUrl, "instagram://camera");
   assert.equal(instagram.autoFallback, false);
   assert.equal(facebook.appUrl, "fb://facewebmodal/f?href=https%3A%2F%2Fwww.facebook.com%2F");

@@ -91,15 +91,68 @@ export function buildShareLaunchUrl(link) {
   return directPublishUrls[link?.id] || link?.url || "#";
 }
 
+function decodeBase64UrlToBytes(value) {
+  const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+
+  if (typeof globalThis.atob === "function") {
+    const binary = globalThis.atob(padded);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  }
+
+  if (typeof Buffer !== "undefined") {
+    return Uint8Array.from(Buffer.from(padded, "base64"));
+  }
+
+  return new Uint8Array();
+}
+
+export function extractGoogleReviewCid(url) {
+  const match = String(url || "").match(/^https?:\/\/(?:www\.)?g\.page\/r\/([^/?#]+)\/review\/?/i);
+  if (!match) return "";
+
+  const bytes = decodeBase64UrlToBytes(match[1]);
+  if (bytes.length < 9 || bytes[0] !== 0x09) return "";
+
+  let cid = 0n;
+  for (let index = 0; index < 8; index += 1) {
+    cid += BigInt(bytes[index + 1]) << BigInt(index * 8);
+  }
+
+  return cid ? cid.toString() : "";
+}
+
+export function buildGoogleMapsLaunchTarget(reviewUrl) {
+  const cid = extractGoogleReviewCid(reviewUrl);
+  if (!cid) {
+    return {
+      appUrl: reviewUrl,
+      androidAppUrl: reviewUrl,
+      fallbackUrl: reviewUrl,
+    };
+  }
+
+  const mapsUrl = `https://www.google.com/maps?cid=${cid}`;
+  return {
+    appUrl: `comgooglemapsurl://www.google.com/maps?cid=${cid}`,
+    androidAppUrl: `intent://www.google.com/maps?cid=${cid}#Intent;scheme=https;package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(reviewUrl)};end`,
+    fallbackUrl: reviewUrl,
+    mapsUrl,
+  };
+}
+
 export function buildPlatformLaunchTarget(link) {
   const fallbackUrl = buildShareLaunchUrl(link);
   if (link?.id === "google") {
+    const googleTarget = buildGoogleMapsLaunchTarget(fallbackUrl);
     return {
       url: fallbackUrl,
-      appUrl: fallbackUrl,
-      fallbackUrl,
+      appUrl: googleTarget.appUrl,
+      androidAppUrl: googleTarget.androidAppUrl,
+      fallbackUrl: googleTarget.fallbackUrl,
+      mapsUrl: googleTarget.mapsUrl || fallbackUrl,
       prefersSameTab: true,
-      autoFallback: false,
+      autoFallback: true,
     };
   }
 

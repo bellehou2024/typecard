@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-app-deeplinks";
+} from "./core.mjs?v=20260607-google-maps-app";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -430,8 +430,12 @@ function showInlineModalError(modal, message) {
 
 function launchPlatform(action) {
   const target = action.launchTarget;
-  if (target?.appUrl) {
-    openAppWithFallback(target.appUrl, target.fallbackUrl, { autoFallback: target.autoFallback !== false });
+  const userAgent = navigator.userAgent || "";
+  const preferredAppUrl =
+    /Android/i.test(userAgent) && target?.androidAppUrl ? target.androidAppUrl : target?.appUrl;
+
+  if (preferredAppUrl) {
+    openAppWithFallback(preferredAppUrl, target.fallbackUrl, { autoFallback: target.autoFallback !== false });
     return { launched: true, appAttempted: true };
   }
 
