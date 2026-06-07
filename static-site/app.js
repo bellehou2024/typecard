@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-admin-workbench";
+} from "./core.mjs?v=20260607-prize-percentages";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -978,7 +978,7 @@ async function renderSettings() {
 
           <section class="panel settings-section">
             <h2>奖品/抽奖</h2>
-            <p class="muted">顾客抽奖后会截图到店领取。库存为 0 的奖品不会被抽中。</p>
+            <p class="muted">顾客抽奖后会截图到店领取。中奖概率用百分比填写，建议三个奖品合计 100%；库存为 0 的奖品不会被抽中。</p>
             <label class="field">活动标题 <input class="input" name="rewardTitle" value="${escapeAttr(reward?.title || "")}" required /></label>
             <label class="field">领取说明 <textarea class="textarea" name="rewardDescription">${escapeHtml(reward?.description || "")}</textarea></label>
             <div class="prize-settings-grid">
@@ -1029,7 +1029,7 @@ async function renderSettings() {
           description: String(form.get(`prize-${prize.id}-description`) || prize.description),
           stock_total: Number(form.get(`prize-${prize.id}-stock-total`) || prize.stock_total || 0),
           stock_remaining: Number(form.get(`prize-${prize.id}-stock-remaining`) || prize.stock_remaining || 0),
-          probability_weight: Number(form.get(`prize-${prize.id}-weight`) || prize.probability_weight || 1),
+          probability_weight: probabilityPercentToWeight(form.get(`prize-${prize.id}-probability`), prize.probability_weight),
           enabled: form.has(`prize-${prize.id}-enabled`),
         })
         .eq("id", prize.id),
@@ -1100,8 +1100,10 @@ function renderPrizeSettings(prizes) {
     return `<p class="muted">还没有奖品数据。请先运行抽奖奖品初始化 SQL。</p>`;
   }
 
-  return prizes
-    .slice(0, 3)
+  const displayedPrizes = prizes.slice(0, 3);
+  const probabilityPercents = calculatePrizeProbabilityPercents(displayedPrizes);
+
+  return displayedPrizes
     .map(
       (prize, index) => `
         <div class="prize-setting">
@@ -1117,12 +1119,29 @@ function renderPrizeSettings(prizes) {
           <div class="grid cols-3">
             <label class="field">总库存 <input class="input" type="number" min="0" name="prize-${escapeAttr(prize.id)}-stock-total" value="${escapeAttr(prize.stock_total)}" /></label>
             <label class="field">剩余库存 <input class="input" type="number" min="0" name="prize-${escapeAttr(prize.id)}-stock-remaining" value="${escapeAttr(prize.stock_remaining)}" /></label>
-            <label class="field">中奖权重 <input class="input" type="number" min="1" name="prize-${escapeAttr(prize.id)}-weight" value="${escapeAttr(prize.probability_weight)}" /></label>
+            <label class="field">中奖概率 % <input class="input" type="number" min="0" max="100" step="0.1" name="prize-${escapeAttr(prize.id)}-probability" value="${escapeAttr(probabilityPercents[index])}" /></label>
           </div>
         </div>
       `,
     )
     .join("");
+}
+
+function calculatePrizeProbabilityPercents(prizes) {
+  const enabledPrizes = prizes.filter((prize) => prize.enabled);
+  const totalWeight = enabledPrizes.reduce((sum, prize) => sum + Number(prize.probability_weight || 0), 0);
+
+  return prizes.map((prize) => {
+    if (!prize.enabled || totalWeight <= 0) return "0";
+    const percent = (Number(prize.probability_weight || 0) / totalWeight) * 100;
+    return Number.isInteger(percent) ? String(percent) : percent.toFixed(1);
+  });
+}
+
+function probabilityPercentToWeight(value, fallbackWeight) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return Math.max(Number(fallbackWeight || 1), 1);
+  return Math.max(parsed, 0.0001);
 }
 
 async function renderTrialKit() {
