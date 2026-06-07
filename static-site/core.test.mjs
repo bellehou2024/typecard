@@ -126,7 +126,7 @@ test("getStoredParticipantToken reuses a local token per card", () => {
 test("editablePlatformSettings exposes every customer platform for settings", () => {
   assert.deepEqual(
     editablePlatformSettings.map((platform) => platform.id),
-    ["rednote", "tiktok", "google", "facebook", "instagram", "whatsapp"],
+    ["rednote", "tiktok", "google", "instagram"],
   );
   assert.equal(editablePlatformSettings.find((platform) => platform.id === "google").templateLabel, "Google 提示文案");
 });

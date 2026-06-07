@@ -138,12 +138,12 @@ begin
   insert into public.action_links
     (id, card_id, merchant_id, label, platform, category, url, enabled, accent, sort_order)
   values
-    ('rednote', 'table-a01', v_merchant, '小红书发布探店笔记', '小红书', 'share', 'https://www.xiaohongshu.com/', true, '#ff2442', 10),
+    ('rednote', 'table-a01', v_merchant, '小红书发布探店笔记', '小红书', 'share', 'https://creator.xiaohongshu.com/publish/publish?from=typecard&target=article', true, '#ff2442', 10),
     ('tiktok', 'table-a01', v_merchant, '发布 TikTok 探店视频', 'TikTok', 'share', 'https://www.tiktok.com/', true, '#111827', 20),
-    ('google', 'table-a01', v_merchant, 'Google 留下真实评价', 'Google', 'review', 'https://www.google.com/maps', true, '#4285f4', 30),
-    ('facebook', 'table-a01', v_merchant, '关注 Facebook', 'Facebook', 'follow', 'https://www.facebook.com/', true, '#1877f2', 40),
+    ('google', 'table-a01', v_merchant, 'Google 留下真实评价', 'Google', 'review', 'https://g.page/r/CV4dH4Ir7AXnEBI/review', true, '#4285f4', 30),
+    ('facebook', 'table-a01', v_merchant, '关注 Facebook', 'Facebook', 'follow', 'https://www.facebook.com/', false, '#1877f2', 40),
     ('instagram', 'table-a01', v_merchant, '关注 Instagram', 'Instagram', 'follow', 'https://www.instagram.com/', true, '#d946ef', 50),
-    ('whatsapp', 'table-a01', v_merchant, 'WhatsApp 咨询报价', 'WhatsApp', 'follow', 'https://wa.me/', true, '#22c55e', 60)
+    ('whatsapp', 'table-a01', v_merchant, 'WhatsApp 咨询报价', 'WhatsApp', 'follow', 'https://wa.me/', false, '#22c55e', 60)
   on conflict (card_id, id) do update set
     label = excluded.label,
     platform = excluded.platform,

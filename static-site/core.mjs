@@ -59,22 +59,10 @@ export const editablePlatformSettings = [
     templateLabel: "Google 提示文案",
   },
   {
-    id: "facebook",
-    name: "Facebook",
-    linkLabel: "关注 Facebook",
-    templateLabel: "Facebook 提示文案",
-  },
-  {
     id: "instagram",
     name: "Instagram",
     linkLabel: "关注 Instagram",
     templateLabel: "Instagram 提示文案",
-  },
-  {
-    id: "whatsapp",
-    name: "WhatsApp",
-    linkLabel: "WhatsApp 咨询报价",
-    templateLabel: "WhatsApp 提示文案",
   },
 ];
 
