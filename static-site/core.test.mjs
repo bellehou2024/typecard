@@ -11,6 +11,7 @@ import {
   buildPlatformLaunchTarget,
   buildShareLaunchUrl,
   buildGoogleMapsLaunchTarget,
+  buildGoogleMapsQuery,
   extractGoogleReviewCid,
   getStoredParticipantToken,
   isPendingShareState,
@@ -162,19 +163,42 @@ test("extractGoogleReviewCid decodes Google Business Profile review short links"
 });
 
 test("buildGoogleMapsLaunchTarget prefers the Google Maps app while keeping review fallback", () => {
-  const target = buildGoogleMapsLaunchTarget("https://g.page/r/CV4dH4Ir7AXnEBI/review");
+  const target = buildGoogleMapsLaunchTarget("https://g.page/r/CV4dH4Ir7AXnEBI/review", {
+    merchantName: "Cyan Mobile",
+    storeName: "Cyan Mobile · Sim Lim Square #01-62",
+    storeAddress: "1 Rochor Canal Rd, #01-62 Sim Lim Square, Singapore 188504",
+  });
 
-  assert.equal(target.appUrl, "comgooglemapsurl://maps.google.com/?cid=16646971269255732574");
-  assert.match(target.androidAppUrl, /^intent:\/\/maps\.google\.com\/\?cid=16646971269255732574#Intent/);
+  assert.match(target.appUrl, /^comgooglemaps:\/\/\?q=Cyan%20Mobile/);
+  assert.match(target.androidAppUrl, /^intent:\/\/www\.google\.com\/maps\/search\/\?api=1&query=Cyan%20Mobile/);
   assert.match(target.androidAppUrl, /package=com\.google\.android\.apps\.maps/);
   assert.equal(target.fallbackUrl, "https://g.page/r/CV4dH4Ir7AXnEBI/review");
-  assert.equal(target.mapsUrl, "https://maps.google.com/?cid=16646971269255732574");
+  assert.match(target.mapsUrl, /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=Cyan%20Mobile/);
+  assert.match(target.mapsUrl, /Sim%20Lim%20Square/);
+});
+
+test("buildGoogleMapsQuery removes duplicate blank store search parts", () => {
+  assert.equal(
+    buildGoogleMapsQuery({
+      merchantName: "Cyan Mobile",
+      storeName: "Cyan Mobile",
+      storeAddress: "1 Rochor Canal Rd",
+    }),
+    "Cyan Mobile 1 Rochor Canal Rd",
+  );
 });
 
 test("buildPlatformLaunchTarget opens known app compose surfaces without web auto fallback", () => {
   const target = buildPlatformLaunchTarget({ id: "rednote", url: "https://www.xiaohongshu.com/" });
   const tiktok = buildPlatformLaunchTarget({ id: "tiktok", url: "https://www.tiktok.com/" });
-  const google = buildPlatformLaunchTarget({ id: "google", url: "https://g.page/r/CV4dH4Ir7AXnEBI/review" });
+  const google = buildPlatformLaunchTarget(
+    { id: "google", url: "https://g.page/r/CV4dH4Ir7AXnEBI/review" },
+    {
+      merchantName: "Cyan Mobile",
+      storeName: "Cyan Mobile · Sim Lim Square #01-62",
+      storeAddress: "1 Rochor Canal Rd, #01-62 Sim Lim Square, Singapore 188504",
+    },
+  );
   const instagram = buildPlatformLaunchTarget({ id: "instagram", url: "https://www.instagram.com/" });
   const facebook = buildPlatformLaunchTarget({ id: "facebook", url: "https://www.facebook.com/" });
   const whatsapp = buildPlatformLaunchTarget({ id: "whatsapp", url: "https://wa.me/" });
@@ -187,7 +211,7 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(tiktok.appUrl, "tiktok://");
   assert.equal(tiktok.fallbackUrl, "https://www.tiktok.com/");
   assert.equal(tiktok.autoFallback, false);
-  assert.equal(google.appUrl, "comgooglemapsurl://maps.google.com/?cid=16646971269255732574");
+  assert.match(google.appUrl, /^comgooglemaps:\/\/\?q=Cyan%20Mobile/);
   assert.match(google.androidAppUrl, /package=com\.google\.android\.apps\.maps/);
   assert.equal(google.fallbackUrl, "https://g.page/r/CV4dH4Ir7AXnEBI/review");
   assert.equal(google.prefersSameTab, true);

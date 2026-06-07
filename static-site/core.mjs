@@ -122,9 +122,22 @@ export function extractGoogleReviewCid(url) {
   return cid ? cid.toString() : "";
 }
 
-export function buildGoogleMapsLaunchTarget(reviewUrl) {
-  const cid = extractGoogleReviewCid(reviewUrl);
-  if (!cid) {
+export function buildGoogleMapsQuery(context = {}) {
+  const parts = [
+    context.googleMapsQuery,
+    context.merchantName,
+    context.storeName,
+    context.storeAddress,
+  ]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+
+  return [...new Set(parts)].join(" ");
+}
+
+export function buildGoogleMapsLaunchTarget(reviewUrl, context = {}) {
+  const query = buildGoogleMapsQuery(context);
+  if (!query) {
     return {
       appUrl: reviewUrl,
       androidAppUrl: reviewUrl,
@@ -132,19 +145,20 @@ export function buildGoogleMapsLaunchTarget(reviewUrl) {
     };
   }
 
-  const mapsUrl = `https://maps.google.com/?cid=${cid}`;
+  const encodedQuery = encodeURIComponent(query);
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`;
   return {
-    appUrl: `comgooglemapsurl://maps.google.com/?cid=${cid}`,
-    androidAppUrl: `intent://maps.google.com/?cid=${cid}#Intent;scheme=https;package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(reviewUrl)};end`,
+    appUrl: `comgooglemaps://?q=${encodedQuery}`,
+    androidAppUrl: `intent://www.google.com/maps/search/?api=1&query=${encodedQuery}#Intent;scheme=https;package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(mapsUrl)};end`,
     fallbackUrl: reviewUrl,
     mapsUrl,
   };
 }
 
-export function buildPlatformLaunchTarget(link) {
+export function buildPlatformLaunchTarget(link, context = {}) {
   const fallbackUrl = buildShareLaunchUrl(link);
   if (link?.id === "google") {
-    const googleTarget = buildGoogleMapsLaunchTarget(fallbackUrl);
+    const googleTarget = buildGoogleMapsLaunchTarget(fallbackUrl, context);
     return {
       url: fallbackUrl,
       appUrl: googleTarget.appUrl,

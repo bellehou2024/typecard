@@ -13,7 +13,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-google-maps-cid";
+} from "./core.mjs?v=20260607-google-maps-search";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -236,7 +236,11 @@ function buildActionDraft(bundle, linkId) {
     storeAddress: store.address,
     platform: link.platform,
   });
-  const launchTarget = buildPlatformLaunchTarget(link);
+  const launchTarget = buildPlatformLaunchTarget(link, {
+    merchantName: merchant.name,
+    storeName: store.name,
+    storeAddress: store.address,
+  });
 
   return { card, reward, link, copy, launchTarget };
 }
