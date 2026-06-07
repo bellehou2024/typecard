@@ -14,7 +14,7 @@ import {
   normalizePhoneForOtp,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-phone-otp-lottery";
+} from "./core.mjs?v=20260607-admin-qr-current";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -24,6 +24,7 @@ const configuredPublicSiteUrl = normalizePublicSiteUrl(config.PUBLIC_SITE_URL);
 const appOrigin =
   configuredPublicSiteUrl ||
   window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
+const customerPageVersion = "20260607-admin-qr-current";
 const pendingShareStorageKey = "typecard.pendingShare.v1";
 let customerReturnCleanup = null;
 const supabase =
@@ -91,6 +92,17 @@ async function render() {
 
 function navigate(route) {
   window.location.hash = route;
+}
+
+function buildCustomerPageUrl(cardId) {
+  return addVersionToAppUrl(buildAppUrl(appOrigin, basePath, `/c/${cardId}`), customerPageVersion);
+}
+
+function addVersionToAppUrl(url, version) {
+  const [beforeHash, hash = ""] = String(url).split("#");
+  const separator = beforeHash.includes("?") ? "&" : "?";
+  const versionedUrl = `${beforeHash}${separator}v=${encodeURIComponent(version)}`;
+  return hash ? `${versionedUrl}#${hash}` : versionedUrl;
 }
 
 function isSupabaseAuthCallbackHash(hash) {
@@ -871,7 +883,7 @@ async function renderDashboard() {
   const cardId = card?.id || defaultCardId;
   const enabledLinks = bundle.links.filter((link) => link.enabled);
   const availablePrizes = bundle.lotteryPrizes.filter((prize) => prize.enabled && Number(prize.stock_remaining) > 0);
-  const customerUrl = buildAppUrl(appOrigin, basePath, `/c/${cardId}`);
+  const customerUrl = buildCustomerPageUrl(cardId);
   app.innerHTML = `
     <main class="shell">
       <section class="wrap">
@@ -1258,7 +1270,7 @@ async function renderTrialKit() {
 
 async function renderPrint(cardId) {
   const bundle = await loadCustomerBundle(cardId);
-  const url = buildAppUrl(appOrigin, basePath, `/c/${cardId}`);
+  const url = buildCustomerPageUrl(cardId);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(url)}`;
   const nfcInstruction = buildNfcInstruction(url);
 
