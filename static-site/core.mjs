@@ -61,8 +61,14 @@ export const editablePlatformSettings = [
   {
     id: "instagram",
     name: "Instagram",
-    linkLabel: "关注 Instagram",
-    templateLabel: "Instagram 提示文案",
+    linkLabel: "Instagram 发布/转发",
+    templateLabel: "Instagram 发布文案",
+  },
+  {
+    id: "facebook",
+    name: "Facebook",
+    linkLabel: "Facebook 分享/发布",
+    templateLabel: "Facebook 发布文案",
   },
 ];
 
@@ -161,8 +167,8 @@ export function buildPlatformLaunchTarget(link, context = {}) {
   const appLaunchUrls = {
     rednote: "xhsdiscover://post_note/",
     tiktok: "tiktok://",
-    instagram: "instagram://camera",
-    facebook: `fb://facewebmodal/f?href=${encodeURIComponent(fallbackUrl)}`,
+    instagram: "instagram://story-camera",
+    facebook: "fb://composer",
     whatsapp: "whatsapp://send",
   };
 
@@ -257,10 +263,10 @@ export function buildTrialMessage({
     "",
     "试用流程：",
     "1. 顾客扫二维码进入页面。",
-    "2. 选择小红书、TikTok、Google、Facebook、Instagram 或 WhatsApp。",
+    "2. 选择小红书、TikTok、Google、Instagram 或 Facebook。",
     "3. 发布/评价后回到页面，系统弹出任务完成提示。",
     "4. 顾客完成发布/评价后直接抽奖。",
-    "5. 中奖后截图，到店凭截图领取奖品。",
+    "5. 中奖后获得领取码，到店凭领取码核销奖品。",
   ].join("\n");
 }
 

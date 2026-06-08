@@ -12,10 +12,11 @@ import {
   isPendingShareState,
   isRewardActionLink,
   isWeChatBrowser,
+  normalizeClaimResult,
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260607-google-direct-lottery";
+} from "./core.mjs?v=20260608-claim-code-facebook";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -25,9 +26,11 @@ const configuredPublicSiteUrl = normalizePublicSiteUrl(config.PUBLIC_SITE_URL);
 const appOrigin =
   configuredPublicSiteUrl ||
   window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
-const customerPageVersion = "20260607-google-direct-lottery";
+const customerPageVersion = "20260608-claim-code-facebook";
 const pendingShareStorageKey = "typecard.pendingShare.v1";
+const prizeResultStorageKey = "typecard.prizeResultShown.v1";
 let customerReturnCleanup = null;
+const activePrizeDrawIds = new Set();
 const supabase =
   config.SUPABASE_URL && config.SUPABASE_PUBLISHABLE_KEY
     ? createClient(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY)
@@ -431,13 +434,10 @@ async function showLotteryStep(action, modal, options = {}) {
 
   const status = await getLotteryStatus(action.card.id, participantToken);
   if (status?.has_drawn) {
+    const existingDraw = await drawLottery(action.card.id, action.link.id, participantToken);
+    const drawWithClaim = await attachPrizeClaim(action, existingDraw);
     clearPendingShare();
-    showPrizeResult(modal, {
-      prize_name: status.prize_name,
-      prize_description: status.prize_description,
-      drawn_at: status.drawn_at,
-      already_drawn: true,
-    });
+    showPrizeResult(modal, drawWithClaim);
     return;
   }
 
@@ -456,14 +456,40 @@ async function showLotteryStep(action, modal, options = {}) {
     button.textContent = "抽奖中...";
     try {
       const draw = await drawLottery(action.card.id, action.link.id, participantToken);
+      const drawWithClaim = await attachPrizeClaim(action, draw);
       clearPendingShare();
-      showPrizeResult(modal, draw);
+      showPrizeResult(modal, drawWithClaim);
     } catch (error) {
       button.disabled = false;
       button.textContent = "立即抽奖";
       showInlineModalError(modal, error.message || "抽奖失败，请再试一次。");
     }
   });
+}
+
+async function attachPrizeClaim(action, draw) {
+  if (draw.claim_code) return draw;
+
+  const storedClaim = readStoredClaim(draw.draw_id);
+  if (storedClaim?.code) {
+    return { ...draw, claim_id: storedClaim.id, claim_code: storedClaim.code };
+  }
+
+  if (!action.reward?.id) {
+    return draw;
+  }
+
+  const { data, error } = await supabase.rpc("create_reward_claim_public", {
+    p_card_id: action.card.id,
+    p_reward_id: action.reward.id,
+    p_platform: action.link.platform || action.link.id,
+  });
+  if (error) throw error;
+
+  const claim = normalizeClaimResult(data);
+  if (!claim) return draw;
+  storeClaim(draw.draw_id, claim);
+  return { ...draw, claim_id: claim.id, claim_code: claim.code };
 }
 
 function lotteryLimitText(action, usesDeviceLottery) {
@@ -506,21 +532,47 @@ function renderLotteryPrize(prize) {
   return `
     <div class="lottery-prize">
       <strong>${escapeHtml(prize.name)}</strong>
-      <p>${escapeHtml(prize.description || "截图到店领取。")}</p>
+      <p>${escapeHtml(prize.description || "到店凭领取码核销。")}</p>
     </div>
   `;
 }
 
 function showPrizeResult(modal, draw) {
+  const drawId = draw.draw_id || "";
+  if (drawId && activePrizeDrawIds.has(drawId) && document.querySelector("[data-prize-draw-id]")) {
+    return;
+  }
+  if (drawId) {
+    activePrizeDrawIds.add(drawId);
+    markPrizeResultShown(drawId);
+  }
+  clearPendingShare();
+  if (customerReturnCleanup) {
+    customerReturnCleanup();
+    customerReturnCleanup = null;
+  }
   const alreadyText = draw.already_drawn ? "你已经参与过本次活动" : "恭喜中奖";
+  const claimCode = draw.claim_code || "";
+  modal.dataset.prizeDrawId = drawId;
   modal.querySelector(".modal-card").innerHTML = `
     <p class="muted">${escapeHtml(alreadyText)}</p>
     <h1 style="text-align:center; font-size:34px; margin:12px 0">${escapeHtml(draw.prize_name)}</h1>
-    <p class="status-ok">${escapeHtml(draw.prize_description || "请截图保存，到店出示给店员领取奖品。")}</p>
-    <p class="muted" style="text-align:center">请截图这个页面，到店凭截图领取奖品。</p>
-    <button class="btn secondary" data-close style="width:100%; margin-top:12px">我已截图</button>
+    <p class="status-ok">${escapeHtml(draw.prize_description || "请到店出示领取码，店员核销后领取奖品。")}</p>
+    ${
+      claimCode
+        ? `<div class="claim-code-box">
+            <span>领取码</span>
+            <strong>${escapeHtml(claimCode)}</strong>
+          </div>`
+        : `<p class="status-warn">领取码生成异常，请让店员在后台查看抽奖记录。</p>`
+    }
+    <p class="muted" style="text-align:center">到店出示这个领取码，店员在后台核销后发放奖品。</p>
+    <button class="btn secondary" data-close style="width:100%; margin-top:12px">我已记下领取码</button>
   `;
-  modal.querySelector("[data-close]").addEventListener("click", () => modal.remove());
+  modal.querySelector("[data-close]").addEventListener("click", () => {
+    if (drawId) activePrizeDrawIds.delete(drawId);
+    modal.remove();
+  });
 }
 
 function normalizePublicSiteUrl(url) {
@@ -653,6 +705,48 @@ function clearPendingShare() {
   }
 }
 
+function markPrizeResultShown(drawId) {
+  try {
+    window.sessionStorage?.setItem(
+      prizeResultStorageKey,
+      JSON.stringify({ drawId, shownAt: Date.now() }),
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function hasRecentPrizeResultShown() {
+  try {
+    const state = JSON.parse(window.sessionStorage?.getItem(prizeResultStorageKey) || "null");
+    return Boolean(state?.drawId && Date.now() - Number(state.shownAt || 0) < 30000);
+  } catch {
+    return false;
+  }
+}
+
+function claimStorageKey(drawId) {
+  return `typecard.claim.v1.${drawId}`;
+}
+
+function readStoredClaim(drawId) {
+  if (!drawId) return null;
+  try {
+    return JSON.parse(window.localStorage?.getItem(claimStorageKey(drawId)) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function storeClaim(drawId, claim) {
+  if (!drawId || !claim?.code) return;
+  try {
+    window.localStorage?.setItem(claimStorageKey(drawId), JSON.stringify(claim));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 function bindCustomerReturnHandlers(bundle) {
   if (customerReturnCleanup) customerReturnCleanup();
 
@@ -687,6 +781,10 @@ function restoreCompletedTask(bundle) {
   const pending = readPendingShare();
   if (!isPendingShareState(pending, bundle.card.id)) return;
   if (document.querySelector("[data-task-complete-modal]")) return;
+  if (document.querySelector("[data-prize-draw-id]") || hasRecentPrizeResultShown()) {
+    clearPendingShare();
+    return;
+  }
   const returnedFromApp =
     Boolean(pending.leftAt || pending.taskCompletedAt) || Date.now() - pending.createdAt > 2500;
   if (!returnedFromApp) return;
@@ -740,10 +838,10 @@ async function loadLotteryPrizes(merchantId) {
   if (error) throw error;
   return data?.length
     ? data
-    : [
-        { name: "占位奖品 A", description: "截图到店领取。" },
-        { name: "占位奖品 B", description: "截图到店领取。" },
-        { name: "占位奖品 C", description: "截图到店领取。" },
+      : [
+        { name: "占位奖品 A", description: "到店凭领取码核销。" },
+        { name: "占位奖品 B", description: "到店凭领取码核销。" },
+        { name: "占位奖品 C", description: "到店凭领取码核销。" },
       ];
 }
 
@@ -904,7 +1002,7 @@ async function renderDashboard() {
 
         <section class="dashboard-grid">
           ${renderDashboardCard("店铺内容", bundle.store?.name || "未设置店铺", "修改店名、地址和店铺介绍", "#/settings", "去设置")}
-          ${renderDashboardCard("四个平台", `${enabledLinks.length} 个入口已显示`, enabledLinks.map((link) => link.platform).join(" · "), "#/settings", "管理平台")}
+          ${renderDashboardCard("平台入口", `${enabledLinks.length} 个入口已显示`, enabledLinks.map((link) => link.platform).join(" · "), "#/settings", "管理平台")}
           ${renderDashboardCard("奖品/抽奖", `${availablePrizes.length} 个奖品可抽`, "设置奖品名称、说明、库存和权重", "#/settings", "管理奖品")}
           ${renderDashboardCard("二维码/NFC", "扫码页已生成", "打印二维码，或把链接写入 NFC 卡片", `#/print/${escapeAttr(cardId)}`, "打开卡片")}
         </section>
@@ -922,13 +1020,13 @@ async function renderDashboard() {
 
         <section class="panel" style="margin-top:16px">
           <h2>抽奖/领取记录</h2>
-          <p class="muted">顾客完成平台任务后抽奖，到店出示截图时，店员用这里核对奖品。</p>
+          <p class="muted">顾客完成平台任务后抽奖，到店出示领取码时，店员用这里核对奖品。</p>
           ${renderLotteryDrawsTable(bundle.lotteryDraws)}
         </section>
 
         <section class="panel redeem-backup-panel">
           <h2>福利码核销备用</h2>
-          <p class="muted">旧版福利码流程保留备用；当前主流程以顾客截图为准。</p>
+          <p class="muted">顾客中奖后会获得领取码；店员在这里输入领取码完成核销。</p>
           <form id="redeem-form" class="grid cols-2">
             <input class="input" name="code" placeholder="输入福利码，例如 TC-ABC123" required />
             <button class="btn">立即核销</button>
@@ -1033,7 +1131,7 @@ async function renderSettings() {
           <div>
             <a href="#/dashboard">返回后台</a>
             <h1>管理设置</h1>
-            <p class="muted">店铺资料、四个平台、发布文案和奖品都在这里维护。</p>
+            <p class="muted">店铺资料、平台入口、发布文案和奖品都在这里维护。</p>
           </div>
           <button class="btn" form="settings-form">保存全部设置</button>
         </div>
@@ -1051,8 +1149,8 @@ async function renderSettings() {
           </section>
 
           <section class="panel settings-section">
-            <h2>四个平台入口</h2>
-            <p class="muted">顾客扫码页只显示这里的四个平台：小红书、TikTok、Google 和 Instagram。</p>
+            <h2>平台入口</h2>
+            <p class="muted">顾客扫码页显示这里开启的平台：小红书、TikTok、Google、Instagram 和 Facebook。</p>
             ${editablePlatformSettings
               .map((platform) => renderPlatformLinkSetting(platform, linksById[platform.id]))
               .join("")}
@@ -1060,7 +1158,7 @@ async function renderSettings() {
 
           <section class="panel settings-section">
             <h2>发布文案</h2>
-            <p class="muted">发布类平台会自动生成文案；评价/关注类平台可以写给顾客看的提示。</p>
+            <p class="muted">发布类平台会自动生成文案；评价平台可以写给顾客看的提示。</p>
             ${editablePlatformSettings
               .map((platform) => renderPlatformTemplateSetting(platform, reward))
               .join("")}
@@ -1069,7 +1167,7 @@ async function renderSettings() {
 
           <section class="panel settings-section">
             <h2>奖品/抽奖</h2>
-            <p class="muted">顾客抽奖后会截图到店领取。中奖概率用百分比填写，建议三个奖品合计 100%；库存为 0 的奖品不会被抽中。</p>
+            <p class="muted">顾客抽奖后会获得领取码，到店由店员核销。中奖概率用百分比填写，建议三个奖品合计 100%；库存为 0 的奖品不会被抽中。</p>
             <label class="field">活动标题 <input class="input" name="rewardTitle" value="${escapeAttr(reward?.title || "")}" required /></label>
             <label class="field">领取说明 <textarea class="textarea" name="rewardDescription">${escapeHtml(reward?.description || "")}</textarea></label>
             <div class="prize-settings-grid">

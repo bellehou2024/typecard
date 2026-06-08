@@ -68,6 +68,7 @@ test("normalizeLotteryDrawResult accepts Supabase draw RPC arrays and objects", 
         prize_name: "占位奖品 A",
         prize_description: "截图到店领取",
         already_drawn: false,
+        claim_code: "TC-ABC123",
       },
     ]),
     {
@@ -75,6 +76,7 @@ test("normalizeLotteryDrawResult accepts Supabase draw RPC arrays and objects", 
       prize_name: "占位奖品 A",
       prize_description: "截图到店领取",
       already_drawn: false,
+      claim_code: "TC-ABC123",
     },
   );
   assert.equal(normalizeLotteryDrawResult([]), null);
@@ -155,7 +157,7 @@ test("isGoogleEmailUser only accepts Google OAuth users with email addresses", (
 test("editablePlatformSettings exposes every customer platform for settings", () => {
   assert.deepEqual(
     editablePlatformSettings.map((platform) => platform.id),
-    ["rednote", "tiktok", "google", "instagram"],
+    ["rednote", "tiktok", "google", "instagram", "facebook"],
   );
   assert.equal(editablePlatformSettings.find((platform) => platform.id === "google").templateLabel, "Google 提示文案");
 });
@@ -245,9 +247,9 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(google.fallbackUrl, "https://g.page/r/CV4dH4Ir7AXnEBI/review");
   assert.equal(google.prefersSameTab, true);
   assert.equal(google.autoFallback, true);
-  assert.equal(instagram.appUrl, "instagram://camera");
+  assert.equal(instagram.appUrl, "instagram://story-camera");
   assert.equal(instagram.autoFallback, false);
-  assert.equal(facebook.appUrl, "fb://facewebmodal/f?href=https%3A%2F%2Fwww.facebook.com%2F");
+  assert.equal(facebook.appUrl, "fb://composer");
   assert.equal(facebook.autoFallback, false);
   assert.equal(whatsapp.appUrl, "whatsapp://send");
   assert.equal(whatsapp.autoFallback, false);

@@ -422,6 +422,29 @@ textarea {
   color: #34384a;
 }
 
+.claim-code-box {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  border: 1px solid #cbbdad;
+  border-radius: 12px;
+  background: #fffaf4;
+  padding: 16px;
+  text-align: center;
+}
+
+.claim-code-box span {
+  color: #6d6258;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.claim-code-box strong {
+  color: #172033;
+  font-size: 34px;
+  letter-spacing: 0;
+}
+
 .lottery-grid {
   display: grid;
   gap: 10px;

@@ -121,8 +121,8 @@ begin
       "rednote": "新加坡二手手机/配件店探店｜{{merchantName}}\n\n今天到 {{storeName}} 看了一下，店里可以做二手手机回收、售卖和电子零部件咨询。想换手机、卖旧机或者找配件的朋友可以来问问。\n\n#新加坡二手手机 #手机回收 #电子配件 #探店 #{{merchantName}}",
       "tiktok": "{{merchantName}} 探店分享：二手手机回收、售卖和电子配件咨询都可以到店问问。#Singapore #PhoneTradeIn #SecondHandPhone",
       "google": "请在 Google Maps 写下真实体验。发布后回到本页生成福利码，到柜台领取礼品。",
-      "facebook": "关注 {{merchantName}} 的 Facebook 页面，回到本页生成福利码。",
-      "instagram": "关注 {{merchantName}} 的 Instagram 页面，回到本页生成福利码。",
+      "facebook": "{{merchantName}} 探店分享：二手手机回收、售卖和电子配件咨询都可以到店问问。",
+      "instagram": "{{merchantName}} 探店分享：二手手机回收、售卖和电子配件咨询都可以到店问问。#Singapore #PhoneTradeIn #SecondHandPhone",
       "whatsapp": "通过 WhatsApp 联系 {{merchantName}} 咨询回收估价、二手机和配件。",
       "default": "今天在 {{merchantName}} 发现了不错的手机回收、二手手机和配件服务，推荐来店里看看。"
     }'::jsonb
@@ -141,8 +141,8 @@ begin
     ('rednote', 'table-a01', v_merchant, '小红书发布探店笔记', '小红书', 'share', 'https://creator.xiaohongshu.com/publish/publish?from=typecard&target=article', true, '#ff2442', 10),
     ('tiktok', 'table-a01', v_merchant, '发布 TikTok 探店视频', 'TikTok', 'share', 'https://www.tiktok.com/', true, '#111827', 20),
     ('google', 'table-a01', v_merchant, 'Google 留下真实评价', 'Google', 'review', 'https://g.page/r/CV4dH4lr7AXnEAE/review', true, '#4285f4', 30),
-    ('facebook', 'table-a01', v_merchant, '关注 Facebook', 'Facebook', 'follow', 'https://www.facebook.com/', false, '#1877f2', 40),
-    ('instagram', 'table-a01', v_merchant, '关注 Instagram', 'Instagram', 'follow', 'https://www.instagram.com/', true, '#d946ef', 50),
+    ('instagram', 'table-a01', v_merchant, 'Instagram 发布/转发', 'Instagram', 'share', 'https://www.instagram.com/', true, '#d946ef', 40),
+    ('facebook', 'table-a01', v_merchant, 'Facebook 分享/发布', 'Facebook', 'share', 'https://www.facebook.com/', true, '#1877f2', 50),
     ('whatsapp', 'table-a01', v_merchant, 'WhatsApp 咨询报价', 'WhatsApp', 'follow', 'https://wa.me/', false, '#22c55e', 60)
   on conflict (card_id, id) do update set
     label = excluded.label,
