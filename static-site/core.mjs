@@ -85,6 +85,12 @@ export function buildShareLaunchUrl(link) {
   return directPublishUrls[link?.id] || link?.url || "#";
 }
 
+export function buildFacebookShareUrl(url) {
+  const shareTarget = String(url || "https://www.facebook.com/").trim() || "https://www.facebook.com/";
+  const query = new URLSearchParams({ u: shareTarget });
+  return `https://www.facebook.com/sharer/sharer.php?${query.toString()}`;
+}
+
 function decodeBase64UrlToBytes(value) {
   const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
@@ -164,11 +170,21 @@ export function buildPlatformLaunchTarget(link, context = {}) {
     };
   }
 
+  if (link?.id === "facebook") {
+    const facebookShareUrl = buildFacebookShareUrl(link.url);
+    return {
+      url: `fb://facewebmodal/f?href=${encodeURIComponent(facebookShareUrl)}`,
+      appUrl: `fb://facewebmodal/f?href=${encodeURIComponent(facebookShareUrl)}`,
+      fallbackUrl: facebookShareUrl,
+      prefersSameTab: true,
+      autoFallback: true,
+    };
+  }
+
   const appLaunchUrls = {
     rednote: "xhsdiscover://post_note/",
     tiktok: "tiktok://",
     instagram: "instagram://story-camera",
-    facebook: "fb://composer",
     whatsapp: "whatsapp://send",
   };
 

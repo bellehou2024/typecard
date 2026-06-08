@@ -249,8 +249,9 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(google.autoFallback, true);
   assert.equal(instagram.appUrl, "instagram://story-camera");
   assert.equal(instagram.autoFallback, false);
-  assert.equal(facebook.appUrl, "fb://composer");
-  assert.equal(facebook.autoFallback, false);
+  assert.match(facebook.appUrl, /^fb:\/\/facewebmodal\/f\?href=https%3A%2F%2Fwww\.facebook\.com%2Fsharer%2Fsharer\.php/);
+  assert.match(facebook.fallbackUrl, /^https:\/\/www\.facebook\.com\/sharer\/sharer\.php/);
+  assert.equal(facebook.autoFallback, true);
   assert.equal(whatsapp.appUrl, "whatsapp://send");
   assert.equal(whatsapp.autoFallback, false);
 });
