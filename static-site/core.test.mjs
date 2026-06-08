@@ -231,7 +231,10 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
     },
   );
   const instagram = buildPlatformLaunchTarget({ id: "instagram", url: "https://www.instagram.com/" });
-  const facebook = buildPlatformLaunchTarget({ id: "facebook", url: "https://www.facebook.com/" });
+  const facebook = buildPlatformLaunchTarget(
+    { id: "facebook", url: "https://www.facebook.com/" },
+    { customerUrl: "https://bellehou2024.github.io/typecard/#/c/table-a01" },
+  );
   const whatsapp = buildPlatformLaunchTarget({ id: "whatsapp", url: "https://wa.me/" });
 
   assert.equal(target.url, "xhsdiscover://post_note/");
@@ -249,8 +252,9 @@ test("buildPlatformLaunchTarget opens known app compose surfaces without web aut
   assert.equal(google.autoFallback, true);
   assert.equal(instagram.appUrl, "instagram://story-camera");
   assert.equal(instagram.autoFallback, false);
-  assert.match(facebook.appUrl, /^fb:\/\/facewebmodal\/f\?href=https%3A%2F%2Fwww\.facebook\.com%2Fsharer%2Fsharer\.php/);
+  assert.equal(facebook.appUrl, "");
   assert.match(facebook.fallbackUrl, /^https:\/\/www\.facebook\.com\/sharer\/sharer\.php/);
+  assert.match(facebook.fallbackUrl, /bellehou2024\.github\.io/);
   assert.equal(facebook.autoFallback, true);
   assert.equal(whatsapp.appUrl, "whatsapp://send");
   assert.equal(whatsapp.autoFallback, false);

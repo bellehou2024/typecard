@@ -171,10 +171,10 @@ export function buildPlatformLaunchTarget(link, context = {}) {
   }
 
   if (link?.id === "facebook") {
-    const facebookShareUrl = buildFacebookShareUrl(link.url);
+    const facebookShareUrl = buildFacebookShareUrl(context.customerUrl || link.url);
     return {
-      url: `fb://facewebmodal/f?href=${encodeURIComponent(facebookShareUrl)}`,
-      appUrl: `fb://facewebmodal/f?href=${encodeURIComponent(facebookShareUrl)}`,
+      url: facebookShareUrl,
+      appUrl: "",
       fallbackUrl: facebookShareUrl,
       prefersSameTab: true,
       autoFallback: true,

@@ -16,7 +16,7 @@ import {
   normalizeLotteryDrawResult,
   renderTemplate,
   routeFromHash,
-} from "./core.mjs?v=20260608-facebook-share-fix";
+} from "./core.mjs?v=20260608-facebook-https-share";
 
 const app = document.querySelector("#app");
 const config = window.TYPECARD_CONFIG ?? {};
@@ -26,7 +26,7 @@ const configuredPublicSiteUrl = normalizePublicSiteUrl(config.PUBLIC_SITE_URL);
 const appOrigin =
   configuredPublicSiteUrl ||
   window.location.origin + window.location.pathname.replace(/\/index\.html$/, "").replace(/\/$/, "");
-const customerPageVersion = "20260608-facebook-share-fix";
+const customerPageVersion = "20260608-facebook-https-share";
 const pendingShareStorageKey = "typecard.pendingShare.v1";
 const prizeResultStorageKey = "typecard.prizeResultShown.v1";
 let customerReturnCleanup = null;
@@ -286,6 +286,7 @@ function buildActionDraft(bundle, linkId) {
     merchantName: merchant.name,
     storeName: store.name,
     storeAddress: store.address,
+    customerUrl: buildCustomerPageUrl(card.id),
   });
 
   return { card, reward, link, copy, launchTarget };
